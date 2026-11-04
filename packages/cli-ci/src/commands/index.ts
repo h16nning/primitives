@@ -8,14 +8,18 @@ import { register as launch } from './launch.ts';
 import { register as plan } from './plan.ts';
 import { register as probe } from './probe.ts';
 import { register as registry } from './registry.ts';
+import { register as release } from './release.ts';
 import { register as report } from './report.ts';
 import { register as sweep } from './sweep.ts';
 import { register as teardown } from './teardown.ts';
+import { register as test } from './test.ts';
 
 export const commands: ((program: Command) => void)[] = [
   plan,
   launch,
   build,
+  test,
+  release,
   report,
   teardown,
   sweep,

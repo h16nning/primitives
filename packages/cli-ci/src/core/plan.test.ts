@@ -1,21 +1,29 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hashesOf, legsOf } from './plan.ts';
+import { hashesOf, legsOf, testLegsOf } from './plan.ts';
 
 const dryRun = JSON.stringify({
   tasks: [
-    { taskId: '@damage-ms/website#build', package: '@damage-ms/website', hash: '0f2a' },
-    { taskId: '@damage-ms/website#test', package: '@damage-ms/website', hash: 'dc97' },
+    { taskId: '@damage-ms/website#build', package: '@damage-ms/website', hash: '0f2a', command: 'next build' },
+    { taskId: '@damage-ms/website#test', package: '@damage-ms/website', hash: 'dc97', command: '<NONEXISTENT>' },
     { taskId: '@damage-ms/vernier-core#build', package: '@damage-ms/vernier-core', hash: '4b6a' },
-    { taskId: '@damage-ms/vernier-app#build', package: '@damage-ms/vernier-app', hash: 'c51b' },
+    { taskId: '@damage-ms/vernier-app#build', package: '@damage-ms/vernier-app', hash: 'c51b', command: 'next build' },
+    { taskId: '@damage-ms/vernier-app#test', package: '@damage-ms/vernier-app', hash: '5b05', command: 'pnpm test' },
+    { taskId: '@other/x#build', package: '@other/x', hash: 'ffff', command: 'x' },
   ],
 });
 
-test('hashesOf keeps the build hashes of the scope’s packages', () => {
+test('hashesOf keeps the build hashes of the scope’s packages, and the test hash where the script exists', () => {
   assert.deepEqual(hashesOf(dryRun, '@damage-ms'), [
     { app: 'website', hash: '0f2a' },
     { app: 'vernier-core', hash: '4b6a' },
-    { app: 'vernier-app', hash: 'c51b' },
+    { app: 'vernier-app', hash: 'c51b', test: '5b05' },
+  ]);
+});
+
+test('testLegsOf: one leg per app with a test task, carrying the build it tests', () => {
+  assert.deepEqual(testLegsOf(['website', 'vernier-app'], hashesOf(dryRun, '@damage-ms'), '41', '1'), [
+    { app: 'vernier-app', hash: '5b05', build: 'c51b', label: 'exo-test-41-vernier-app-1' },
   ]);
 });
 
