@@ -111,6 +111,19 @@ export class Context {
   }
 
   /**
+   * One effect whose output the verb needs to go on (a create call's
+   * operation, a registration's config): narrated and performed like apply,
+   * and undefined under --dry-run, where the caller stands in a placeholder.
+   */
+  async effect(step: Step): Promise<string | undefined> {
+    this.say(`${this.dryRun ? '[dry-run] ' : ''}${describe(step)}`);
+    const input = body(step);
+    if (input !== undefined) this.say(indent(input), step.kind === 'write' ? 2 : 1);
+    if (this.dryRun) return undefined;
+    return this.perform(step);
+  }
+
+  /**
    * Perform a step on scratch state, whatever the mode: the one exception to
    * "a dry run performs no effect", for a preview that has to run a tool
    * against a throwaway copy to be honest. Resolves with the output of a run.
@@ -126,7 +139,12 @@ export class Context {
     const inherit = this.verbose >= 2 || (step.kind === 'run' && step.interactive === true);
     switch (step.kind) {
       case 'run':
-        return this.io.exec(step.command, step.args, { cwd: step.cwd, input: step.input, inherit });
+        return this.io.exec(step.command, step.args, {
+          cwd: step.cwd,
+          input: step.input,
+          inherit,
+          env: step.env === undefined ? undefined : { ...process.env, ...step.env },
+        });
       case 'write':
         await this.io.writeFile(step.path, step.content);
         return undefined;

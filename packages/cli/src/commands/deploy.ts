@@ -9,6 +9,7 @@
 //
 //   plx deploy deploy@1.2.3.4 plexus website --image ghcr.io/org/website:<sha>
 //   plx deploy deploy@1.2.3.4 plexus beszel            # third-party: image pinned in the file
+//   plx deploy deploy@1.2.3.4 plexus website -e staging --image …   # the staging deployment, /opt/stacks/plexus/website-staging
 import { resolve } from 'node:path';
 import { type Deploy, deploy } from '@plexus-ms/lib';
 import type { Command } from 'commander';
@@ -18,6 +19,7 @@ interface Opts {
   image?: string;
   healthUrl?: string;
   retries: string;
+  environment?: string;
   appDir?: string;
   source?: string;
   dir: string;
@@ -38,7 +40,14 @@ export function register(program: Command): void {
       'readiness URL polled on the host (default: /healthz, or the plexus.healthz label, on the loopback port)',
     )
     .option('--retries <n>', 'poll attempts, two seconds apart', '30')
-    .option('--app-dir <path>', 'the app dir on the host (default: /opt/stacks/<tenant>/<app>)')
+    .option(
+      '-e, --environment <name>',
+      'the environment deployed into; decides the app dir’s slug (default: production)',
+    )
+    .option(
+      '--app-dir <path>',
+      'the app dir on the host (default: /opt/stacks/<tenant>/<app>, or <app>-<environment> outside production)',
+    )
     .option('--source <path>', 'the app’s dir in the checkout (default: apps/<app>)')
     .option('-C, --dir <dir>', 'the checkout to read', '.')
     .action(async (host: string, tenant: string, app: string, opts: Opts, command: Command) => {
@@ -50,6 +59,7 @@ export function register(program: Command): void {
         image: opts.image,
         healthUrl: opts.healthUrl,
         retries: Number(opts.retries),
+        environment: opts.environment,
         appDir: opts.appDir,
         source: opts.source,
         dir: resolve(opts.dir),

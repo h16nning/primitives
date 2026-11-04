@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { Context, type Options } from './context.ts';
-import { deploy, q, renderCompose } from './deploy.ts';
+import { defaultAppDir, deploy, q, renderCompose } from './deploy.ts';
 import { fakeIo, type Tree } from './testing/fakeIo.ts';
 import { UsageError } from './train.ts';
 
@@ -238,4 +238,10 @@ test('a dry run reaches no host and prints every ssh line of the happy path, pla
   assert.match(lines, /\[dry-run\] \$ ssh -o ControlPath=\S+ -O exit deploy@h/);
   assert.equal(result.healthy, true);
   assert.equal(result.live, 'ghcr.io/x/web:new');
+});
+
+test('the default app dir keys on the deployment slug: bare in production, suffixed elsewhere', () => {
+  assert.equal(defaultAppDir('plexus', 'website'), '/opt/stacks/plexus/website');
+  assert.equal(defaultAppDir('plexus', 'website', 'production'), '/opt/stacks/plexus/website');
+  assert.equal(defaultAppDir('plexus', 'website', 'staging'), '/opt/stacks/plexus/website-staging');
 });

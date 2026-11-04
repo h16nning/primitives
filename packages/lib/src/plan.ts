@@ -8,7 +8,16 @@
 import { render } from './io.ts';
 
 export type Step =
-  | { kind: 'run'; command: string; args: string[]; cwd?: string; input?: string; interactive?: boolean }
+  | {
+      kind: 'run';
+      command: string;
+      args: string[];
+      cwd?: string;
+      input?: string;
+      interactive?: boolean;
+      /** Extra environment for the process (a credential that must not be on argv); not part of the description. */
+      env?: NodeJS.ProcessEnv;
+    }
   | { kind: 'write'; path: string; content: string };
 
 export type Plan = Step[];
@@ -16,7 +25,7 @@ export type Plan = Step[];
 export const run = (
   command: string,
   args: string[] = [],
-  options: { cwd?: string; input?: string; interactive?: boolean } = {},
+  options: { cwd?: string; input?: string; interactive?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Step => ({
   kind: 'run',
   command,

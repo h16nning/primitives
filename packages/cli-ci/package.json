@@ -1,0 +1,40 @@
+{
+  "name": "@plexus-ms/cli-ci",
+  "version": "0.105.0",
+  "description": "plx-ci, the CI verbs of Plexus: throwaway runners on a cloud, a registry on object storage, reproducible image builds, and their teardown",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "plx-ci": "./dist/plx-ci.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/plexus-ms/primitives.git",
+    "directory": "packages/cli-ci"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24.22.1"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "check": "tsc --noEmit",
+    "test": "node --test",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@plexus-ms/lib": "workspace:*",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "esbuild": "^0.28.2",
+    "typescript": "catalog:"
+  }
+}

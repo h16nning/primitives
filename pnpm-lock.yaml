@@ -207,6 +207,25 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/cli-ci:
+    dependencies:
+      '@plexus-ms/lib':
+        specifier: workspace:*
+        version: link:../lib
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/config: {}
 
   packages/lib:

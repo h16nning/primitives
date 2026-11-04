@@ -1,7 +1,13 @@
 ---
+# The deployment's slug (§ 3 PLX-Platform): the app name in production,
+# <name>-<environment> in any other environment.
+- name: "{{ app.name }} | resolve the deployment slug"
+  ansible.builtin.set_fact:
+    configure_apps_slug: "{{ app.name if (app.environment | default('production')) == 'production' else app.name ~ '-' ~ app.environment }}"
+
 - name: "{{ app.name }} | resolve app dir"
   ansible.builtin.set_fact:
-    configure_apps_dir: "{{ plexus_deploy_root }}/{{ plexus_tenant }}/{{ app.name }}"
+    configure_apps_dir: "{{ plexus_deploy_root }}/{{ plexus_tenant }}/{{ configure_apps_slug }}"
 
 - name: "{{ app.name }} | create app dir"
   ansible.builtin.file:
@@ -25,7 +31,7 @@
 # PLEXUS_ bindings, then the non-secret values the inventory provides for the
 # app (`app.env`). The project name defaults to the app dir's basename, which
 # collides the moment two co-hosted tenants deploy an app with the same name
-# — so it is pinned tenant-scoped here. The loopback port is the one assigned
+# — so it is pinned tenant-scoped here, on the deployment's slug. The loopback port is the one assigned
 # in the inventory, interpolated by compose as ${PLEXUS_LOOPBACK_PORT}. This
 # playbook is the file's only writer and always overwrites — the inventory is
 # the truth.
@@ -35,7 +41,7 @@
     content: |
       # Written by the configure playbook from the tenant inventory. Do not edit.
       # Compose settings.
-      COMPOSE_PROJECT_NAME={{ plexus_tenant }}-{{ app.name }}
+      COMPOSE_PROJECT_NAME={{ plexus_tenant }}-{{ configure_apps_slug }}
 
       # Platform bindings (reserved PLEXUS_ prefix, § 4 PLX-App).
       PLEXUS_LOOPBACK_PORT={{ app.loopback_port }}

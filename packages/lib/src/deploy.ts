@@ -34,11 +34,13 @@
 // image ref; the file is then placed as is.
 //
 //   plx deploy deploy@1.2.3.4 plexus website --image ghcr.io/org/website:<sha>
+//   plx deploy deploy@1.2.3.4 plexus website --environment staging --image …   # into /opt/stacks/plexus/website-staging
 //   plx -n deploy deploy@host plexus beszel          # the ssh lines it would run
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Context } from './context.ts';
+import { DEFAULT_ENVIRONMENT, deploymentSlug } from './deployTargets.ts';
 import { ExecError } from './io.ts';
 import { run } from './plan.ts';
 import { UsageError } from './train.ts';
@@ -54,7 +56,9 @@ export interface DeployOptions {
   healthUrl?: string;
   /** Poll attempts, two seconds apart. */
   retries?: number;
-  /** The app dir on the host; default /opt/stacks/<tenant>/<app>, the configure playbook's layout. */
+  /** The environment deployed into; default production. Decides the app dir's slug (§ 3 PLX-Platform). */
+  environment?: string;
+  /** The app dir on the host; default /opt/stacks/<tenant>/<slug>, the configure playbook's layout. */
   appDir?: string;
   /** The app's dir in the checkout; default apps/<app>. */
   source?: string;
@@ -98,6 +102,11 @@ export function renderCompose(text: string, image: string | undefined, path: str
   }
   if (has) throw new UsageError(`${path} references \${PLEXUS_DEPLOYMENT_IMAGE} but no image ref was given`);
   return text;
+}
+
+/** The app dir the configure playbook lays out: the deploy root, the tenant, the deployment's slug (§ 3 PLX-Platform). */
+export function defaultAppDir(tenant: string, app: string, environment: string = DEFAULT_ENVIRONMENT): string {
+  return `/opt/stacks/${tenant}/${deploymentSlug(app, environment)}`;
 }
 
 /** Single-quote a word for a remote shell. */
@@ -170,7 +179,8 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
   const { host, tenant, app } = options;
   const dir = options.dir ?? '.';
   const image = options.image || undefined;
-  const appDir = options.appDir || `/opt/stacks/${tenant}/${app}`;
+  const environment = options.environment || DEFAULT_ENVIRONMENT;
+  const appDir = options.appDir || defaultAppDir(tenant, app, environment);
   const source = options.source || `apps/${app}`;
   const retries = options.retries ?? 30;
 

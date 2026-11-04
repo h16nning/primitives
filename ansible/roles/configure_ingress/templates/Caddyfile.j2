@@ -17,11 +17,12 @@
 	encode zstd gzip
 {% for app in apps %}
 {% if app.path is defined %}
-	# {{ app.name }}, under {{ app.path }}/
+	# {{ app.name }}{% if app.environment is defined %} ({{ app.environment }}){% endif %}, under {{ app.path }}/
 	redir {{ app.path }} {{ app.path }}/
 	handle_path {{ app.path }}/* {
 {% else %}
-	# {{ app.name }}
+	# {{ app.name }}{% if app.environment is defined %} ({{ app.environment }}){% endif %}
+
 	handle {
 {% endif %}
 		respond /healthz 403

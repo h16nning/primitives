@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { Context, type Options } from './context.ts';
 import { type ExecOptions, type Io, realIo } from './io.ts';
 import { run, write } from './plan.ts';
+import { fakeIo } from './testing/fakeIo.ts';
 
 /** A fake Io that records what it was asked and performs nothing. */
 function make(overrides: Options = {}, prompt?: Io['prompt']) {
@@ -109,4 +110,19 @@ test('the real Io runs processes and reports failure with the rendered command a
     assert.match(e.message, /^sh -c 'echo boom >&2; exit 3' exited with 3\nboom$/);
     return true;
   });
+});
+
+test('effect narrates like apply, returns the output, and performs nothing under --dry-run', async () => {
+  const io = fakeIo({}, () => undefined, { echo: (_cwd, args) => args.join(' ') });
+  const out = await new Context({}, io).effect(run('echo', ['created', 'x']));
+  assert.equal(out, 'created x');
+  let ran = false;
+  const dry = fakeIo({}, () => undefined, {
+    echo: () => {
+      ran = true;
+      return '';
+    },
+  });
+  assert.equal(await new Context({ dryRun: true }, dry).effect(run('echo', ['x'])), undefined);
+  assert.equal(ran, false);
 });

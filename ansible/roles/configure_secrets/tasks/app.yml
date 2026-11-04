@@ -1,7 +1,13 @@
 ---
+# The deployment's slug (§ 3 PLX-Platform): the app name in production,
+# <name>-<environment> in any other environment.
+- name: "{{ app.name }} | resolve the deployment slug"
+  ansible.builtin.set_fact:
+    configure_secrets_slug: "{{ app.name if (app.environment | default('production')) == 'production' else app.name ~ '-' ~ app.environment }}"
+
 - name: "{{ app.name }} | resolve app dir"
   ansible.builtin.set_fact:
-    configure_secrets_dir: "{{ plexus_deploy_root }}/{{ plexus_tenant }}/{{ app.name }}"
+    configure_secrets_dir: "{{ plexus_deploy_root }}/{{ plexus_tenant }}/{{ configure_secrets_slug }}"
 
 # The app dir is laid out by configure_apps (§ 3 PLX-Platform); this role runs
 # before it so that the first `up` already sees the secrets, and creates the

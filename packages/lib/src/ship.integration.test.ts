@@ -175,7 +175,7 @@ function fixture(name: string): void {
   for (const r of TRAIN_REPOS) git(WS, 'init', '--quiet', up(r));
   const prim = up('primitives');
   put(join(prim, 'ansible/galaxy.yml'), 'version: 0.1.0                # mirrors the release-train tag\n');
-  for (const p of ['cli', 'lib', 'config'])
+  for (const p of ['cli', 'cli-ci', 'lib', 'config'])
     put(join(prim, `packages/${p}/package.json`), `{\n  "name": "@plexus-ms/${p}",\n  "version": "0.1.0"\n}\n`);
   put(
     join(prim, 'package.json'),
@@ -390,7 +390,10 @@ test('dry run previews both phases and the propagation in scratch clones, and ch
   assert.ok(has(out, '→ phase: primitives'), 'phase one announced');
   assert.ok(has(out, '→ phase: preset-repo-web, preset-app-nextjs, preset-repo-platform, compendium'), 'phase two');
   assert.ok(
-    has(out, '⏳ [dry-run] would wait for @plexus-ms/cli@0.2.0, @plexus-ms/lib@0.2.0, @plexus-ms/config@0.2.0 on npm'),
+    has(
+      out,
+      '⏳ [dry-run] would wait for @plexus-ms/cli@0.2.0, @plexus-ms/cli-ci@0.2.0, @plexus-ms/lib@0.2.0, @plexus-ms/config@0.2.0 on npm',
+    ),
     'the wait is a step of the preview',
   );
   assert.ok(!fakeLog().some((l) => l.startsWith('npm ')), 'registry not polled');
@@ -465,7 +468,7 @@ test('happy path: primitives first, the npm wait, the rest, then one pull reques
   // Phase one: primitives' bookkeeping, tag, release.
   const prim = up('primitives');
   assert.match(read(join(prim, 'ansible/galaxy.yml')), /^version: 0\.2\.0 /);
-  for (const p of ['cli', 'lib', 'config'])
+  for (const p of ['cli', 'cli-ci', 'lib', 'config'])
     assert.match(read(join(prim, `packages/${p}/package.json`)), /"version": "0\.2\.0"/, `${p} at the train number`);
   assert.match(read(join(prim, 'package.json')), /"workspace:\*"/, 'workspace reference left alone');
   assert.match(read(join(prim, '.github/workflows/pipeline.yml')), /ci\.yml@0\.2\.0/);
@@ -488,7 +491,9 @@ test('happy path: primitives first, the npm wait, the rest, then one pull reques
     log.filter((l) => has(l, 'npm view @plexus-ms/cli@0.2.0')).length >= 2,
     'polled more than once, until the publish',
   );
-  assert.ok(has(out, '✓ @plexus-ms/cli@0.2.0, @plexus-ms/lib@0.2.0, @plexus-ms/config@0.2.0 on npm'));
+  assert.ok(
+    has(out, '✓ @plexus-ms/cli@0.2.0, @plexus-ms/cli-ci@0.2.0, @plexus-ms/lib@0.2.0, @plexus-ms/config@0.2.0 on npm'),
+  );
   assert.ok(has(out, '→ phase: primitives\n'), 'phase one narrated');
 
   // Phase two: the presets and the compendium.
@@ -659,7 +664,7 @@ test('a registry that never answers stops the run resumably; the re-run skips wh
   delete process.env.FAKE_NPM_NEVER;
   assert.match(
     first.error ?? '',
-    /@plexus-ms\/cli, @plexus-ms\/lib, @plexus-ms\/config not on npm at 0\.2\.0 after \d+ min/,
+    /@plexus-ms\/cli, @plexus-ms\/cli-ci, @plexus-ms\/lib, @plexus-ms\/config not on npm at 0\.2\.0 after \d+ min/,
   );
   assert.match(first.error ?? '', /re-run with --train 0\.2\.0/);
   assert.ok(tagged('primitives', '0.2.0') && remoteTagged('primitives', '0.2.0') && released('primitives', '0.2.0'));

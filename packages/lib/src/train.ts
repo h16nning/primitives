@@ -29,6 +29,7 @@ export const PHASES: readonly (readonly string[])[] = [[PRIMITIVES], TRAIN_REPOS
 /** The packages published at the train number from `primitives` (§ 1.6 PLX), by their directory there. */
 export const TRAIN_PACKAGES = [
   { name: '@plexus-ms/cli', dir: 'packages/cli' },
+  { name: '@plexus-ms/cli-ci', dir: 'packages/cli-ci' },
   { name: '@plexus-ms/lib', dir: 'packages/lib' },
   { name: '@plexus-ms/config', dir: 'packages/config' },
 ] as const;
