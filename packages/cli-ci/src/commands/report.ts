@@ -19,13 +19,8 @@ export function register(program: Command): void {
       const ctx = contextOf(command);
       const legs = JSON.parse(matrix) as Leg[];
       const result = await report(ctx, legs, opts.mode, need('GITHUB_RUN_ID'));
-      ctx.result(result, (r) =>
-        r
-          .map(
-            (c) =>
-              `${c.app} build-${c.hash}: ${c.digest ?? 'missing'}${c.repro ? (c.repro.identical ? ' reproducible' : ` ${c.repro.same}/${c.repro.layers} layers identical`) : ''}`,
-          )
-          .join('\n'),
-      );
+      // The report narrates every digest and difference as it reads them; the
+      // result repeats nothing unless asked for as JSON.
+      ctx.result(result, () => '');
     });
 }
