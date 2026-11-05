@@ -70,6 +70,11 @@ on:
         required: false
         type: boolean
         default: true
+      alerts-email:
+        description: The address mailed when an instance stalls or the sweep removes something; empty for no mail. A preset answer, never a vault item (§ 3 PLX-Secrets).
+        required: false
+        type: string
+        default: ''
       primitives-ref:
         description: >-
           A trial of an unreleased primitives: plx-ci and plx are built from a
@@ -92,6 +97,7 @@ env:
   EXO_VERSION: 1.103.2
   CRANE_VERSION: 0.22.1
   TENANT: ${{ inputs.tenant }}
+  MAIL_TO: ${{ inputs.alerts-email }}
   VAULT: ${{ inputs.vault || format('{0}-ci', github.repository_owner) }}
   IMAGE_PREFIX: ${{ inputs.image-prefix || format('ghcr.io/{0}', github.repository_owner) }}
 
@@ -158,7 +164,6 @@ jobs:
           SMTP_USER: op://${{ env.VAULT }}/smtp-relay/username
           SMTP_PASSWORD: op://${{ env.VAULT }}/smtp-relay/password
           MAIL_FROM: op://${{ env.VAULT }}/smtp-relay/from
-          MAIL_TO: op://${{ env.VAULT }}/config/alerts-email
           REGISTRY_ENDPOINT: op://${{ env.VAULT }}/bucket-registry/endpoint
           REGISTRY_REGION: op://${{ env.VAULT }}/bucket-registry/region
           REGISTRY_ACCESS_KEY: op://${{ env.VAULT }}/bucket-registry/access-key-id

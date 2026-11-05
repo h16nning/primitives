@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      alerts-email:
+        description: The address mailed when an instance stalls or the sweep removes something; empty for no mail. A preset answer, never a vault item (§ 3 PLX-Secrets).
+        required: false
+        type: string
+        default: ''
       primitives-ref:
         description: A trial of an unreleased primitives, built from this ref instead of the caller's pin; empty for the pin.
         required: false
@@ -41,6 +46,7 @@ permissions:
 env:
   EXO_VERSION: 1.103.2
   VAULT: ${{ inputs.vault || format('{0}-ci', github.repository_owner) }}
+  MAIL_TO: ${{ inputs.alerts-email }}
 
 jobs:
   sweep:
@@ -80,7 +86,6 @@ jobs:
           SMTP_USER: op://${{ env.VAULT }}/smtp-relay/username
           SMTP_PASSWORD: op://${{ env.VAULT }}/smtp-relay/password
           MAIL_FROM: op://${{ env.VAULT }}/smtp-relay/from
-          MAIL_TO: op://${{ env.VAULT }}/config/alerts-email
           REGISTRY_REGION: op://${{ env.VAULT }}/bucket-registry/region
           REGISTRY_ACCESS_KEY: op://${{ env.VAULT }}/bucket-registry/access-key-id
           REGISTRY_SECRET_KEY: op://${{ env.VAULT }}/bucket-registry/secret-access-key
