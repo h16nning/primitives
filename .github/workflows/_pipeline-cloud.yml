@@ -463,7 +463,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.deploy-targets.outputs.matrix) }}
-    uses: plexus-ms/primitives/.github/workflows/_deploy.yml@plx-ci
+    uses: plexus-ms/primitives/.github/workflows/_deploy.yml@0.105.0
     with:
       tenant: ${{ inputs.tenant }}
       app: ${{ matrix.app }}

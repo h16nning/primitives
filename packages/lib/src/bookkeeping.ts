@@ -39,10 +39,10 @@ export const bumpWorkflowRefs = (text: string, train: string): string =>
 export const bumpManifestVersion = (text: string, train: string): string =>
   text.replace(/^(\s*"version":\s*")[^"]*(")/m, `$1${train}$2`);
 
-/** The plx pin in a `mise.toml`, exact, in either spelling: `"npm:@plexus-ms/cli" = "N"` or `= { version = "N", ... }`. */
+/** The plx and plx-ci pins in a `mise.toml`, exact, in either spelling: `"npm:@plexus-ms/cli" = "N"` or `= { version = "N", ... }`. */
 export const PLX_PIN = 'npm:@plexus-ms/cli';
 export const bumpPlxPin = (text: string, train: string): string =>
-  text.replace(/("npm:@plexus-ms\/cli"\s*=\s*(?:\{\s*version\s*=\s*)?")[^"]*(")/g, `$1${train}$2`);
+  text.replace(/("npm:@plexus-ms\/cli(?:-ci)?"\s*=\s*(?:\{\s*version\s*=\s*)?")[^"]*(")/g, `$1${train}$2`);
 
 /**
  * The `@plexus-ms/config` dependency in a package manifest, exact and without

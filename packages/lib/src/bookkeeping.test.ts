@@ -48,6 +48,8 @@ test('bumpPlxPin pins plx exactly in either spelling of a mise tool', () => {
   const table = '"npm:@plexus-ms/cli" = { version = "0.6.0", allow_low_downloads = true }\nhk = "latest"\n';
   assert.equal(bumpPlxPin(table, '0.100.0'), table.replace('0.6.0', '0.100.0'));
   assert.equal(bumpPlxPin('"npm:@plexus-ms/cli" = "0.6.0"\n', '0.100.0'), '"npm:@plexus-ms/cli" = "0.100.0"\n');
+  const both = table + '"npm:@plexus-ms/cli-ci" = { version = "0.6.0", allow_low_downloads = true }\n';
+  assert.equal(bumpPlxPin(both, '0.100.0'), both.replaceAll('0.6.0', '0.100.0'));
 });
 
 test('bumpConfigPin pins the config dependency exactly and leaves workspace references alone', () => {
