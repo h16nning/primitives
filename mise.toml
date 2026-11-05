@@ -20,6 +20,13 @@ ansible = { version = "latest", uvx = true } # syntax check of the roles
 actionlint = "1.7.12" # the workflows' static check: expressions, inputs and outputs, shellcheck over run blocks
 shellcheck = "0.11.0" # what actionlint runs over the workflows' run blocks
 
+[settings]
+# Not a version source: no package.json here sets devEngines.runtime, and node
+# is pinned in [tools]. It makes packages/*/package.json idiomatic files, which
+# is what lets [monorepo].config_roots match packages/*, none of which has a
+# mise config of its own; without it `mise install --monorepo` fails.
+idiomatic_version_file_enable_tools = ["node"]
+
 [hooks]
 # Wire up Git hooks and get pnpm from packageManager
 postinstall = "hk install --mise && npx corepack enable"
