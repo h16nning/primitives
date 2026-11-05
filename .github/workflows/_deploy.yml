@@ -3,11 +3,21 @@ name: _deploy
 # Mounts the deploy verb (§ 6 PLX-Delivery): launch a released artifact into
 # an execution environment. Logic lives in `plx deploy` (@plexus-ms/cli,
 # pinned in the caller's mise.toml), never here; the caller supplies the host
-# and the SSH key. The caller is the app's SOURCE
-# repo, because the verb reads apps/<app>/docker/compose.yaml from the checkout
-# and renders it onto the host with the image ref pinned: an app repo's
-# _pipeline.yml after the release, or the platform repo's deploy.yml for a
-# third-party app, whose compose.yaml pins its own image (no image-ref).
+# and the environment. The caller is the app's SOURCE repo, because the verb
+# reads apps/<app>/docker/compose.yaml from the checkout and renders it onto
+# the host with the image ref pinned: an app repo's pipeline after the
+# release, or the platform repo's deploy.yml for a third-party app, whose
+# compose.yaml pins its own image (no image-ref).
+#
+# Two ways to hand over the keys: the secret `ssh-key` (and `netbird-setup-key`)
+# from the caller's own secrets, or the vault's service account token, with
+# which the job reads `deploy/private key` and `netbird/setup-key` from the
+# vault `<owner>-ci` (§ 3 PLX-Secrets). The vault wins when both are given.
+#
+# The host is reached as named, or, with `overlay: netbird`, over the tenant's
+# overlay: the job joins it as an ephemeral peer with a setup key whose policy
+# allows the app hosts' SSH and nothing else, deploys, and leaves. Joining is
+# the job's environment, like the SSH agent, so it is steps here and no verb.
 
 on:
   workflow_call:
@@ -34,9 +44,14 @@ on:
         type: string
         default: ''
       host:
-        description: SSH target, e.g. deploy@1.2.3.4.
+        description: SSH target, e.g. deploy@1.2.3.4 or ssh://deploy@vm.example.internal.
         required: true
         type: string
+      environment:
+        description: The environment deployed into (PLX-Environment); decides the app dir's slug on the host. Default production.
+        required: false
+        type: string
+        default: production
       health-url:
         description: >-
           Healthcheck URL polled on the host. Defaults to the app's readiness
@@ -45,43 +60,111 @@ on:
         required: false
         type: string
         default: ''
+      overlay:
+        description: "`netbird` joins the tenant's overlay for the length of the job; empty reaches the host as named."
+        required: false
+        type: string
+        default: ''
+      netbird-version:
+        description: The NetBird client the job installs, from pkgs.netbird.io.
+        required: false
+        type: string
+        default: 0.82.0
+      vault:
+        description: The vault the keys are read from when the token is given. Default <owner>-ci.
+        required: false
+        type: string
+        default: ''
+      dry-run:
+        description: "`plx -n deploy`: print every line the deploy would run, reach no host."
+        required: false
+        type: boolean
+        default: false
     secrets:
       ssh-key:
-        description: Private key authorized as the deploy user on the host.
-        required: true
+        description: Private key authorized as the deploy user on the host; or the vault's `deploy/private key`.
+        required: false
+      netbird-setup-key:
+        description: A reusable setup key for ephemeral peers; or the vault's `netbird/setup-key`.
+        required: false
+      op-service-account-token:
+        description: The vault's service account token, when the keys come from the vault.
+        required: false
 
 permissions:
   contents: read
 
+env:
+  VAULT: ${{ inputs.vault || format('{0}-ci', github.repository_owner) }}
+
 jobs:
   deploy:
     runs-on: ${{ inputs.runner }}
-    # Serialize deploys per app+host: at most one running and one pending run
-    # per group, and GitHub replaces the pending run with the newest — so the
-    # newest commit always deploys last. Never cancels a mid-flight deploy
-    # (cancelling between migrate and up would strand the host).
+    # Serialize deploys per app and environment: at most one running and one
+    # pending run per group, and GitHub replaces the pending run with the
+    # newest — so the newest commit always deploys last. Never cancels a
+    # mid-flight deploy (cancelling between migrate and up would strand the
+    # host).
     concurrency:
-      group: deploy-${{ inputs.tenant }}-${{ inputs.app }}-${{ inputs.host }}
+      group: deploy-${{ inputs.tenant }}-${{ inputs.app }}-${{ inputs.environment }}
       cancel-in-progress: false
+    env:
+      OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.op-service-account-token }}
+      SSH_KEY_SECRET: ${{ secrets.ssh-key }}
+      NB_SETUP_KEY_SECRET: ${{ secrets.netbird-setup-key }}
     steps:
       # The caller's repo (the app's source repo) — cwd for the verb, which
       # reads apps/<app>/ relative here. Same SHA the image was built from.
       - uses: actions/checkout@v7
       # The caller's tools, plx among them.
       - uses: jdx/mise-action@v5
-      - name: Load SSH key
+      - name: Load the deploy key from the vault
+        if: ${{ env.OP_SERVICE_ACCOUNT_TOKEN != '' }}
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: true
+        env:
+          SSH_KEY: op://${{ env.VAULT }}/deploy/private key
+      - name: Load the overlay's setup key from the vault
+        if: ${{ env.OP_SERVICE_ACCOUNT_TOKEN != '' && inputs.overlay == 'netbird' }}
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: true
+        env:
+          NB_SETUP_KEY: op://${{ env.VAULT }}/netbird/setup-key
+      # An ephemeral peer for the length of the job: the client from NetBird's
+      # repository at a pinned version, joined with the setup key in the
+      # environment (never on argv), and the job waits until the management
+      # server lists it as connected.
+      - name: Join the overlay
+        if: ${{ inputs.overlay == 'netbird' }}
+        env:
+          NETBIRD_VERSION: ${{ inputs.netbird-version }}
+        run: |
+          curl -fsSL https://pkgs.netbird.io/debian/public.key | sudo gpg --dearmor -o /usr/share/keyrings/netbird-archive-keyring.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' | sudo tee /etc/apt/sources.list.d/netbird.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq "netbird=$NETBIRD_VERSION" >/dev/null
+          NB_SETUP_KEY="${NB_SETUP_KEY:-$NB_SETUP_KEY_SECRET}" sudo --preserve-env=NB_SETUP_KEY netbird up --hostname "ci-${GITHUB_RUN_ID}"
+          for _ in $(seq 1 30); do sudo netbird status | grep -q 'Management: Connected' && break; sleep 1; done
+          sudo netbird status
+      - name: Load the SSH key
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           eval "$(ssh-agent -s)"
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
-          printf '%s\n' "${{ secrets.ssh-key }}" | ssh-add -
+          printf '%s\n' "${SSH_KEY:-$SSH_KEY_SECRET}" | ssh-add -
       # An empty option value is the same as an absent one to the verb, so
       # both flags are always passed.
       - name: Deploy
-        run: plx deploy '${{ inputs.host }}' '${{ inputs.tenant }}' '${{ inputs.app }}' --image '${{ inputs.image-ref }}' --health-url '${{ inputs.health-url }}'
+        run: plx ${{ inputs.dry-run && '-n' || '' }} deploy '${{ inputs.host }}' '${{ inputs.tenant }}' '${{ inputs.app }}' --environment '${{ inputs.environment }}' --image '${{ inputs.image-ref }}' --health-url '${{ inputs.health-url }}'
       # A GitHub-hosted runner dies with the agent; a persistent one would keep
-      # it running, deploy key loaded, for every later job on the machine.
+      # it running, deploy key loaded, for every later job on the machine. The
+      # same for the overlay: the peer leaves, and the management server drops
+      # it as ephemeral.
       - name: Stop the SSH agent
         if: ${{ always() }}
         run: '[ -z "${SSH_AGENT_PID:-}" ] || ssh-agent -k'
+      - name: Leave the overlay
+        if: ${{ always() && inputs.overlay == 'netbird' }}
+        run: sudo netbird down || true

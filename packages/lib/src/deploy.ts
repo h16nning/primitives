@@ -78,6 +78,8 @@ export interface Deploy {
   live?: string;
   healthy: boolean;
   rolledBack: boolean;
+  /** The host already served this image from this run shape, healthy; nothing was pulled or restarted. */
+  unchanged?: boolean;
 }
 
 const PLACEHOLDER = /\$\{PLEXUS_DEPLOYMENT_IMAGE(:[^}]*)?\}/g;
@@ -228,6 +230,31 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     result.previous = (await remote.read(liveImage)) || undefined;
     ctx.say(`  previous: ${result.previous ?? (ctx.dryRun ? '<read on host>' : '<none>')}`);
 
+    // The same image from the same run shape, healthy: nothing to do, and a
+    // promotion that changed another app leaves this one running. Decided from
+    // the host (the live container, the file it serves), never from a record.
+    const poll = (attempts: number) =>
+      `cd ${D} && for _ in $(seq 1 ${attempts}); do curl -fsS --max-time 5 -o /dev/null ${q(url())} && exit 0; sleep 2; done; exit 1`;
+    let resolvedUrl: string | undefined;
+    const url = () => {
+      if (resolvedUrl === undefined) throw new Error('health URL read before it was resolved');
+      return resolvedUrl;
+    };
+    if (ctx.dryRun) ctx.say('  (nothing more runs when the host already serves this image from this file, healthy)');
+    else if (image && result.previous === image) {
+      const sameFile = await remote.test(`cd ${D} && cmp -s compose.yaml ${INCOMING}/compose.yaml`);
+      if (sameFile) {
+        resolvedUrl = options.healthUrl || (await resolveHealthUrl(remote, D, dc, ctx));
+        if (await remote.test(poll(1))) {
+          result.live = image;
+          result.healthy = true;
+          result.unchanged = true;
+          ctx.done(`${image} is already live and healthy; nothing to do`);
+          return result;
+        }
+      }
+    }
+
     // Pull → migrate (idempotent; runs only if compose.yaml declares it), both
     // against the STAGED run shape: a failure here leaves the host exactly as
     // it was. Every non-profiled service is pulled, not just `web`.
@@ -254,10 +281,9 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     // read from the running container, reality, not a parse of the compose
     // file. Each attempt is bounded, so a container that accepts connections
     // but never answers cannot hang the deploy.
-    const url = options.healthUrl || (await resolveHealthUrl(remote, D, dc, ctx));
-    const poll = `cd ${D} && for _ in $(seq 1 ${retries}); do curl -fsS --max-time 5 -o /dev/null ${q(url)} && exit 0; sleep 2; done; exit 1`;
+    resolvedUrl ??= options.healthUrl || (await resolveHealthUrl(remote, D, dc, ctx));
     const started = Date.now();
-    const healthy = await remote.test(poll, true);
+    const healthy = await remote.test(poll(retries), true);
     if (healthy !== false) {
       result.live = (await remote.read(liveImage)) || image;
       result.healthy = true;
@@ -287,7 +313,7 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     ctx.say(`↩ rolling back to ${result.previous ?? 'the previous compose.yaml'}`);
     await remote.exec(`${dc} up -d`);
     result.rolledBack = true;
-    if (await remote.test(poll)) {
+    if (await remote.test(poll(retries))) {
       result.live = result.previous;
       ctx.done(`rolled back to ${result.previous ?? 'the previous compose.yaml'}`);
     } else {

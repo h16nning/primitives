@@ -240,6 +240,54 @@ test('a dry run reaches no host and prints every ssh line of the happy path, pla
   assert.equal(result.live, 'ghcr.io/x/web:new');
 });
 
+test('the same image from the same file, healthy: nothing pulled, nothing restarted', async () => {
+  const h = host('ghcr.io/x/web:same');
+  const { ctx, commands, err } = harness(checkout, h);
+  const result = await deploy(ctx, {
+    host: 'deploy@h',
+    tenant: 't',
+    app: 'web',
+    image: 'ghcr.io/x/web:same',
+    dir: '/repo',
+  });
+  assert.ok(commands.some((c) => c.includes(`cmp -s compose.yaml .incoming/compose.yaml`)));
+  assert.ok(commands.some((c) => c.includes('seq 1 1') && c.includes('curl')));
+  assert.ok(!commands.some((c) => c.endsWith(' pull')));
+  assert.ok(!commands.some((c) => c.endsWith('up -d')));
+  assert.ok(!commands.some((c) => c.includes('mv .incoming')));
+  assert.equal(commands.at(-1), `rm -rf ${D}/.incoming`);
+  assert.deepEqual(result, {
+    host: 'deploy@h',
+    appDir: '/opt/stacks/t/web',
+    compose: 'apps/web/docker/compose.yaml',
+    image: 'ghcr.io/x/web:same',
+    previous: 'ghcr.io/x/web:same',
+    live: 'ghcr.io/x/web:same',
+    healthy: true,
+    rolledBack: false,
+    unchanged: true,
+  });
+  assert.match(err(), /✓ ghcr.io\/x\/web:same is already live and healthy; nothing to do/);
+});
+
+test('the same image from a changed file, or unhealthy, deploys in full', async () => {
+  const h = host('ghcr.io/x/web:same');
+  const base = h.answer.bind(h);
+  h.answer = (c, i) => (c.includes('cmp -s compose.yaml .incoming/compose.yaml') ? undefined : base(c, i));
+  const { ctx, commands } = harness(checkout, h);
+  const result = await deploy(ctx, {
+    host: 'deploy@h',
+    tenant: 't',
+    app: 'web',
+    image: 'ghcr.io/x/web:same',
+    dir: '/repo',
+  });
+  assert.ok(commands.some((c) => c.endsWith(' pull')));
+  assert.ok(commands.some((c) => c.endsWith('up -d')));
+  assert.equal(result.healthy, true);
+  assert.equal(result.unchanged, undefined);
+});
+
 test('the default app dir keys on the deployment slug: bare in production, suffixed elsewhere', () => {
   assert.equal(defaultAppDir('plexus', 'website'), '/opt/stacks/plexus/website');
   assert.equal(defaultAppDir('plexus', 'website', 'production'), '/opt/stacks/plexus/website');
