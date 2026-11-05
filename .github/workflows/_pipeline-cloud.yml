@@ -115,7 +115,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
@@ -261,7 +261,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
@@ -305,7 +305,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
@@ -351,7 +351,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
@@ -407,7 +407,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
@@ -495,7 +495,7 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
           node-version-file: .node-version
