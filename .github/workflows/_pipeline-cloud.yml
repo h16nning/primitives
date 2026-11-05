@@ -119,7 +119,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |
@@ -267,7 +267,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |
@@ -311,7 +311,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |
@@ -357,7 +357,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |
@@ -413,7 +413,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |
@@ -501,7 +501,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .node-version
+          node-version-file: mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |

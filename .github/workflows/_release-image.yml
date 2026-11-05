@@ -25,7 +25,7 @@ on:
       build-args:
         description: >-
           Extra docker build-args, one KEY=value per line. Appended after the
-          standard APP/NODE_VERSION args (e.g. SOURCE_COMMIT=<git sha>
+          standard APP arg (e.g. SOURCE_COMMIT=<git sha>
           for a /health commit check).
         required: false
         type: string
@@ -61,7 +61,6 @@ jobs:
       image-ref: ${{ steps.meta.outputs.image-ref }}
     steps:
       - uses: actions/checkout@v7
-      - run: echo "NODE_VERSION=$(cat .node-version)" >> "$GITHUB_ENV"
       - id: meta
         name: Resolve the image reference
         # Image lives under the CALLER's org so the repo's own GITHUB_TOKEN can
@@ -90,7 +89,6 @@ jobs:
           tags: ${{ steps.meta.outputs.image-ref }}
           build-args: |
             APP=${{ inputs.app }}
-            NODE_VERSION=${{ env.NODE_VERSION }}
             ${{ inputs.build-args }}
           cache-from: ${{ !inputs.persistent && 'type=gha' || '' }}
           cache-to: ${{ !inputs.persistent && 'type=gha,mode=max' || '' }}

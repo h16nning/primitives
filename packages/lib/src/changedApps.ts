@@ -25,7 +25,7 @@ import type { Context } from './context.ts';
 /** Files whose change alone deploys nothing. */
 const BOOKKEEPING = /(^|\/)(PLEXUS\.md|\.copier-answers\.yml)$/;
 /** Workspace-global inputs: a change to one of them deploys every app. */
-const GLOBALS = /^(pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|turbo\.json|mise\.toml|\.npmrc|\.node-version)$/;
+const GLOBALS = /^(pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json|turbo\.json|mise\.toml|\.npmrc)$/;
 const NO_REF = /^0*$/;
 
 export type Reason =
