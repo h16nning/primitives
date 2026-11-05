@@ -473,6 +473,7 @@ jobs:
       overlay: ${{ inputs.overlay }}
       vault: ${{ inputs.vault }}
       dry-run: ${{ inputs.dry-run }}
+      primitives-ref: ${{ inputs.primitives-ref }}
     secrets:
       op-service-account-token: ${{ secrets.op-service-account-token }}
 

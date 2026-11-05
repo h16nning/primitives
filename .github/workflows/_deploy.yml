@@ -80,6 +80,11 @@ on:
         required: false
         type: boolean
         default: false
+      primitives-ref:
+        description: A trial of an unreleased primitives, plx built from this ref instead of the caller's pin; empty for the pin.
+        required: false
+        type: string
+        default: ''
     secrets:
       ssh-key:
         description: Private key authorized as the deploy user on the host; or the vault's `deploy/private key`.
@@ -118,6 +123,18 @@ jobs:
       - uses: actions/checkout@v7
       # The caller's tools, plx among them.
       - uses: jdx/mise-action@v5
+      - uses: actions/checkout@v7
+        if: ${{ inputs.primitives-ref != '' }}
+        with:
+          repository: plexus-ms/primitives
+          ref: ${{ inputs.primitives-ref }}
+          path: .plx-ci
+      - name: plx from the unreleased primitives
+        if: ${{ inputs.primitives-ref != '' }}
+        run: |
+          cd .plx-ci && corepack enable && pnpm install --frozen-lockfile --ignore-scripts >/dev/null
+          pnpm --filter @plexus-ms/cli... run build >/dev/null
+          mkdir -p bin && ln -sf "$PWD/packages/cli/dist/plx.js" bin/plx && echo "$PWD/bin" >> "$GITHUB_PATH"
       - name: Load the deploy key from the vault
         if: ${{ env.OP_SERVICE_ACCOUNT_TOKEN != '' }}
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
