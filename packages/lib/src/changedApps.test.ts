@@ -27,10 +27,7 @@ test('bookkeeping alone deploys nothing, in both repo shapes', async () => {
 test('a workspace-global input deploys every app without asking pnpm', async () => {
   const input = { ...ws(['pnpm-lock.yaml']), dependents: async (): Promise<string[]> => assert.fail('asked') };
   assert.deepEqual((await selectChangedApps(input)).apps, ['app', 'website']);
-  assert.deepEqual((await selectChangedApps(ws(['apps/website/package.json', '.node-version']))).apps, [
-    'app',
-    'website',
-  ]);
+  assert.deepEqual((await selectChangedApps(ws(['apps/website/package.json', 'mise.toml']))).apps, ['app', 'website']);
 });
 
 test('pnpm lists the dependents; an app it lists is kept for its own changes or a change outside apps/', async () => {

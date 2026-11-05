@@ -57,10 +57,10 @@ jobs:
           repository: plexus-ms/primitives
           ref: ${{ inputs.primitives-ref }}
           path: .plx-ci
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: ${{ inputs.primitives-ref != '' }}
         with:
-          node-version-file: .plx-ci/.node-version
+          node-version-file: .plx-ci/mise.toml
       - name: plx-ci from the unreleased primitives
         if: ${{ inputs.primitives-ref != '' }}
         run: |

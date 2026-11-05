@@ -28,7 +28,7 @@
       "enabled": false
     },
     {
-      "description": "npm ranges follow the version actually tested; other managers keep their own spelling, so a floating .node-version major stays floating.",
+      "description": "npm ranges follow the version actually tested; other managers keep their own spelling, so a floating node major in mise.toml stays floating.",
       "matchManagers": ["npm"],
       "rangeStrategy": "bump"
     },
@@ -71,7 +71,7 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "A package's `engines.node` floor states the major it supports, not the patch it was last tested on: the bump strategy would raise it on every LTS patch, so engines updates are off; the runtime itself moves with .node-version.",
+      "description": "A package's `engines.node` floor states the major it supports, not the patch it was last tested on: the bump strategy would raise it on every LTS patch, so engines updates are off; the runtime itself moves with mise.toml.",
       "matchManagers": ["npm"],
       "matchDepTypes": ["engines"],
       "matchDepNames": ["node"],
