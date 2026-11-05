@@ -39,7 +39,8 @@ export interface TestResult {
 
 /** What the override tells the runner side: `x-plexus-ci.env`, the specs' environment. */
 export function overrideEnv(text: string): Record<string, string> {
-  const data: unknown = parse(text);
+  // The override may carry compose's own tags (`!override`), which are not ours to resolve.
+  const data: unknown = parse(text, { logLevel: 'silent' });
   const x = data !== null && typeof data === 'object' ? (data as Record<string, unknown>)['x-plexus-ci'] : undefined;
   const env = x !== null && typeof x === 'object' ? (x as Record<string, unknown>).env : undefined;
   if (env === undefined) return {};
@@ -101,7 +102,10 @@ export async function test(ctx: Context, options: TestOptions): Promise<TestResu
   } catch (error) {
     if (!ctx.dryRun) {
       const logs = await ctx
-        .read('docker', [...composeArgs(project), 'logs', '--no-color', '--tail', '200'], { cwd: composeDir })
+        .read('docker', [...composeArgs(project), 'logs', '--no-color', '--tail', '200'], {
+          cwd: composeDir,
+          env: composeEnv,
+        })
         .catch(() => '');
       if (logs) ctx.say(`test: the stack's last lines\n${logs}`);
     }
