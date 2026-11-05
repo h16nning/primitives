@@ -165,7 +165,9 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq "netbird=$NETBIRD_VERSION" >/dev/null
           NB_SETUP_KEY="${NB_SETUP_KEY:-$NB_SETUP_KEY_SECRET}" sudo --preserve-env=NB_SETUP_KEY netbird up --hostname "ci-${GITHUB_RUN_ID}"
           for _ in $(seq 1 30); do sudo netbird status | grep -q 'Management: Connected' && break; sleep 1; done
-          sudo netbird status
+          for _ in $(seq 1 30); do sudo netbird status -d | grep -qE '^\s*Status: Connected' && break; sleep 1; done
+          sudo netbird status -d
+          resolvectl status 2>/dev/null | grep -E 'Link|DNS Servers|DNS Domain' || true
       # A key pasted into a one-line field arrives with spaces for its line
       # breaks; its lines are restored before the agent reads it.
       - name: Load the SSH key
