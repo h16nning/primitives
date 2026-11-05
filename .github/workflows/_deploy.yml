@@ -11,7 +11,7 @@ name: _deploy
 #
 # Two ways to hand over the keys: the secret `ssh-key` (and `netbird-setup-key`)
 # from the caller's own secrets, or the vault's service account token, with
-# which the job reads `deploy/private key` and `netbird/setup-key` from the
+# which the job reads `deploy-ssh/private key` and `netbird/setup-key` from the
 # vault `<owner>-ci` (§ 3 PLX-Secrets). The vault wins when both are given.
 #
 # The host is reached as named, or, with `overlay: netbird`, over the tenant's
@@ -87,7 +87,7 @@ on:
         default: ''
     secrets:
       ssh-key:
-        description: Private key authorized as the deploy user on the host; or the vault's `deploy/private key`.
+        description: Private key authorized as the deploy user on the host; or the vault's `deploy-ssh/private key`.
         required: false
       netbird-setup-key:
         description: A reusable setup key for ephemeral peers; or the vault's `netbird/setup-key`.
@@ -143,7 +143,7 @@ jobs:
         env:
           # OpenSSH form on purpose: the vault stores a key as PKCS#8 and hands
           # that out by default, which ssh-add does not take for every key type.
-          SSH_KEY: op://${{ env.VAULT }}/deploy/private key?ssh-format=openssh
+          SSH_KEY: op://${{ env.VAULT }}/deploy-ssh/private key?ssh-format=openssh
       - name: Load the overlay's setup key from the vault
         if: ${{ env.OP_SERVICE_ACCOUNT_TOKEN != '' && inputs.overlay == 'netbird' }}
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1

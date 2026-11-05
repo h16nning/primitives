@@ -26,7 +26,8 @@ name: _pipeline-cloud
 #
 # The caller's secrets are one: the vault's service account token. Everything
 # else (the cloud keys, the object-storage keys, the GitHub App, the relay, the
-# deploy key, the overlay's setup key, the apps' build-time keys) is read from
+# runners' and the deploy key, the overlay's setup key, the apps' build-time
+# keys) is read from
 # the vault `<owner>-ci` (§ 3 PLX-Secrets).
 
 on:
@@ -164,7 +165,9 @@ jobs:
           REGISTRY_SECRET_KEY: op://${{ env.VAULT }}/bucket-registry/secret-access-key
           APP_PRIVATE_KEY: op://${{ env.VAULT }}/github-app/private-key
           APP_CLIENT_ID: op://${{ env.VAULT }}/github-app/client-id
-          DIAG_SSH_PRIVATE_KEY: op://${{ env.VAULT }}/deploy/private key
+          # The key the instances are created with (the cloud's key `runners`),
+          # for reading a stalled boot; never the deploy key.
+          DIAG_SSH_PRIVATE_KEY: op://${{ env.VAULT }}/runners-ssh/private key?ssh-format=openssh
       - name: A token that may register and remove runners on this repo
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
