@@ -76,7 +76,7 @@ on:
         type: string
         default: ''
       dry-run:
-        description: "`plx -n deploy`: print every line the deploy would run, reach no host."
+        description: "`plx -n deploy`: print every line the deploy would run; the verb reaches no host, and one `true` over ssh proves the host is reachable."
         required: false
         type: boolean
         default: false
@@ -179,6 +179,11 @@ jobs:
             key=$(printf '%s' "$key" | sed -E 's/^(-----BEGIN [A-Z0-9 ]+-----) */\1\n/; s/ *(-----END [A-Z0-9 ]+-----)$/\n\1/' | awk 'NR==2 { gsub(/ /, "\n") } { print }')
           fi
           printf '%s\n' "$key" | ssh-add -
+      # The dry run's one effect: the path to the host (its name, the overlay's
+      # policy, the key) is proven before a real deploy relies on it.
+      - name: Reach the host
+        if: ${{ inputs.dry-run }}
+        run: ssh -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new '${{ inputs.host }}' -- 'echo "reached $(hostname) as $(id -un)"'
       # An empty option value is the same as an absent one to the verb, so
       # both flags are always passed.
       - name: Deploy
