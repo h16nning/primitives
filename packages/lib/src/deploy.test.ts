@@ -107,7 +107,7 @@ test('happy path: stage, pull, migrate, keep the previous file, swap, up, poll t
       `test -f ${D}/compose.yaml`,
       `cd ${D} && cp -p compose.yaml .incoming/compose.yaml.prev`,
       `cd ${D} && mv .incoming/compose.yaml compose.yaml`,
-      `cd ${D} && docker compose up -d`,
+      `cd ${D} && docker compose up -d --remove-orphans`,
       `cd ${D} && for _ in $(seq 1 30); do curl -fsS --max-time 5 -o /dev/null 'http://127.0.0.1:3011/api/health' && exit 0; sleep 2; done; exit 1`,
       `rm -rf ${D}/.incoming`,
     ],
@@ -159,7 +159,7 @@ test('an unhealthy app rolls back to the previous file and reports it', async ()
     image: 'ghcr.io/x/web:bad',
     dir: '/repo',
   });
-  const ups = commands.filter((c) => c.endsWith('docker compose up -d')).length;
+  const ups = commands.filter((c) => c.endsWith('docker compose up -d --remove-orphans')).length;
   assert.equal(ups, 2);
   assert.ok(commands.some((c) => c.includes('logs --no-color --tail 50 web')));
   assert.ok(commands.some((c) => c.includes('cp -p .incoming/compose.yaml.prev compose.yaml')));
@@ -183,7 +183,7 @@ test('a first deploy that is unhealthy has nothing to roll back to', async () =>
     image: 'ghcr.io/x/web:bad',
     dir: '/repo',
   });
-  assert.equal(commands.filter((c) => c.endsWith('docker compose up -d')).length, 1);
+  assert.equal(commands.filter((c) => c.endsWith('docker compose up -d --remove-orphans')).length, 1);
   assert.equal(result.healthy, false);
   assert.equal(result.rolledBack, false);
   assert.match(err(), /✗ nothing to roll back to/);
@@ -198,7 +198,7 @@ test('a failing pull leaves the host as it was, cleans the staging dir and rethr
     deploy(ctx, { host: 'deploy@h', tenant: 't', app: 'web', image: 'ghcr.io/x/web:new', dir: '/repo' }),
   );
   assert.ok(!commands.some((c) => c.includes('mv .incoming')));
-  assert.ok(!commands.some((c) => c.endsWith('up -d')));
+  assert.ok(!commands.some((c) => c.endsWith('up -d --remove-orphans')));
   assert.equal(commands.at(-1), `rm -rf ${D}/.incoming`);
   assert.equal(h.live, 'ghcr.io/x/web:old');
 });
@@ -226,7 +226,7 @@ test('a dry run reaches no host and prints every ssh line of the happy path, pla
   assert.match(lines, /previous: <read on host>/);
   assert.match(
     lines,
-    /\[dry-run\] \$ ssh -o ControlMaster=auto -o ControlPath=\S+ -o ControlPersist=60 -o StrictHostKeyChecking=accept-new deploy@h -- 'cd '\\''\/opt\/stacks\/t\/web'\\'' && docker compose up -d'/,
+    /\[dry-run\] \$ ssh -o ControlMaster=auto -o ControlPath=\S+ -o ControlPersist=60 -o StrictHostKeyChecking=accept-new deploy@h -- 'cd '\\''\/opt\/stacks\/t\/web'\\'' && docker compose up -d --remove-orphans'/,
   );
   assert.match(lines, /\(if compose.yaml declares a migrate service:\)/);
   assert.match(lines, /\$\{PLEXUS_LOOPBACK_PORT:-3000\}\$\{plexus.healthz:-\/healthz\}/);
@@ -253,7 +253,7 @@ test('the same image from the same file, healthy: nothing pulled, nothing restar
   assert.ok(commands.some((c) => c.includes(`cmp -s compose.yaml .incoming/compose.yaml`)));
   assert.ok(commands.some((c) => c.includes('seq 1 1') && c.includes('curl')));
   assert.ok(!commands.some((c) => c.endsWith(' pull')));
-  assert.ok(!commands.some((c) => c.endsWith('up -d')));
+  assert.ok(!commands.some((c) => c.endsWith('up -d --remove-orphans')));
   assert.ok(!commands.some((c) => c.includes('mv .incoming')));
   assert.equal(commands.at(-1), `rm -rf ${D}/.incoming`);
   assert.deepEqual(result, {
@@ -283,7 +283,7 @@ test('the same image from a changed file, or unhealthy, deploys in full', async 
     dir: '/repo',
   });
   assert.ok(commands.some((c) => c.endsWith(' pull')));
-  assert.ok(commands.some((c) => c.endsWith('up -d')));
+  assert.ok(commands.some((c) => c.endsWith('up -d --remove-orphans')));
   assert.equal(result.healthy, true);
   assert.equal(result.unchanged, undefined);
 });

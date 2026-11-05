@@ -3,8 +3,8 @@
 //
 //   render compose.yaml from the invoking checkout, pinning the image ref (§§ 2 and 3 PLX-App)
 //   → stage it on the host → docker compose pull → compose run --rm migrate (if declared),
-//     both against the staged file → swap the file into place → docker compose up -d
-//     → poll the readiness path → on failure: restore the previous file, up -d (no pull), fail
+//     both against the staged file → swap the file into place → docker compose up -d --remove-orphans
+//     → poll the readiness path → on failure: restore the previous file, up -d --remove-orphans (no pull), fail
 //
 // Run from a checkout of the app's SOURCE repo (§ 2 PLX-App): an app repo's
 // CI, or the platform repo for third-party software the tenant merely
@@ -274,7 +274,11 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     await remote.exec(`cd ${D} && mv ${INCOMING}/compose.yaml compose.yaml`);
     // No pull here: the new image was pulled above, the previous one is in the
     // host's cache; a rollback must never depend on the registry answering.
-    await remote.exec(`${dc} up -d`);
+    // --remove-orphans: a service the new shape dropped goes with it, and a
+    // rollback drops the containers a failed shape started (a dependency the
+    // migrate step brought up), which would otherwise keep a stale network
+    // and break the next attempt.
+    await remote.exec(`${dc} up -d --remove-orphans`);
 
     // Readiness path: /healthz by contract (§ 5 PLX-App); a third-party image
     // that cannot serve it declares its own via the `plexus.healthz` label,
@@ -287,7 +291,7 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     if (healthy !== false) {
       result.live = (await remote.read(liveImage)) || image;
       result.healthy = true;
-      if (ctx.dryRun) ctx.say('  (on failure: restore the previous compose.yaml, up -d, poll again)');
+      if (ctx.dryRun) ctx.say('  (on failure: restore the previous compose.yaml, up -d --remove-orphans, poll again)');
       else ctx.done(`${result.live ?? 'the app'} is live and healthy`);
       return result;
     }
@@ -311,7 +315,7 @@ export async function deploy(ctx: Context, options: DeployOptions): Promise<Depl
     }
     await remote.exec(`cd ${D} && cp -p ${INCOMING}/compose.yaml.prev compose.yaml`);
     ctx.say(`↩ rolling back to ${result.previous ?? 'the previous compose.yaml'}`);
-    await remote.exec(`${dc} up -d`);
+    await remote.exec(`${dc} up -d --remove-orphans`);
     result.rolledBack = true;
     if (await remote.test(poll(retries))) {
       result.live = result.previous;

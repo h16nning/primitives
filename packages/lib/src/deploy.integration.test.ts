@@ -154,7 +154,7 @@ test('happy path on the fake host: pull and migrate against the staged file, swa
   assert.deepEqual(actions, [
     'docker compose [staged] pull',
     'docker compose [staged] run --rm migrate',
-    'docker compose up -d',
+    'docker compose up -d --remove-orphans',
   ]);
   assert.match(err, /health: {3}http:\/\/127.0.0.1:3011\/healthz/);
   assert.match(err, /✓ ghcr.io\/x\/web:new is live and healthy/);
@@ -168,7 +168,7 @@ test('an unhealthy image is rolled back to the previous compose file and image',
   assert.equal(readFileSync(join(appDir, '.running'), 'utf8').trim(), 'ghcr.io/x/web:old');
   assert.match(readFileSync(join(appDir, 'compose.yaml'), 'utf8'), /image: ghcr.io\/x\/web:old/);
   assert.ok(!existsSync(join(appDir, '.incoming')));
-  assert.equal(dockerLog(log).filter((l) => l === 'docker compose up -d').length, 2);
+  assert.equal(dockerLog(log).filter((l) => l === 'docker compose up -d --remove-orphans').length, 2);
   assert.match(err, /✗ healthcheck failed after \d+s/);
   assert.match(err, / {4}fake log line/);
   assert.match(err, /✓ rolled back to ghcr.io\/x\/web:old/);
