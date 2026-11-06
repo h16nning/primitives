@@ -196,7 +196,11 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-administration: write
       - name: Install exo
-        run: curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin exo
+        # Into the job's home, not /usr/local: a slot of a runner host
+        # (ci_hybrid_host) runs with no-new-privileges, so sudo is no option.
+        run: |
+          mkdir -p "$HOME/.local/bin" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$HOME/.local/bin" exo
       - name: The registry sidecars
         run: plx-ci registry
       # The hashes from one Turbo dry run, the look-ups, one runner per image
@@ -393,9 +397,12 @@ jobs:
           REGISTRY_ACCESS_KEY: op://${{ env.VAULT }}/bucket-registry/access-key-id
           REGISTRY_SECRET_KEY: op://${{ env.VAULT }}/bucket-registry/secret-access-key
       - name: Install exo and crane
+        # Into the job's home, not /usr/local: a slot of a runner host
+        # (ci_hybrid_host) runs with no-new-privileges, so sudo is no option.
         run: |
-          curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin exo
-          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | sudo tar -xz -C /usr/local/bin crane
+          mkdir -p "$HOME/.local/bin" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$HOME/.local/bin" exo
+          curl -fsSL "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C "$HOME/.local/bin" crane
       - name: Log in to GHCR
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -547,7 +554,11 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-administration: write
       - name: Install exo
-        run: curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin exo
+        # Into the job's home, not /usr/local: a slot of a runner host
+        # (ci_hybrid_host) runs with no-new-privileges, so sudo is no option.
+        run: |
+          mkdir -p "$HOME/.local/bin" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fsSL "https://github.com/exoscale/cli/releases/download/v${EXO_VERSION}/exoscale-cli_${EXO_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$HOME/.local/bin" exo
       - name: Delete what this run launched
         env:
           RUNNER_TOKEN: ${{ steps.app.outputs.token }}
