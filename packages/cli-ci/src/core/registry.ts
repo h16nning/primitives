@@ -68,7 +68,10 @@ export function sidecarArgs(
     '-e',
     'REGISTRY_STORAGE_S3_FORCEPATHSTYLE=true',
     '-e',
-    readOnly ? 'REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED=true' : 'REGISTRY_STORAGE_DELETE_ENABLED=true',
+    // registry:2 panics on the read-only flag as one nested variable
+    // (…_READONLY_ENABLED=true): the map it builds from it has the wrong
+    // type. The whole key as one YAML value is read as from a config file.
+    readOnly ? 'REGISTRY_STORAGE_MAINTENANCE_READONLY={"enabled":true}' : 'REGISTRY_STORAGE_DELETE_ENABLED=true',
     REGISTRY_IMAGE,
   ];
 }

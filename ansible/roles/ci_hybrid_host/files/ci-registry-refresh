@@ -50,7 +50,9 @@ ensure() {
   if [ "$mode" = rw ]; then
     extra='--restart unless-stopped -e REGISTRY_STORAGE_DELETE_ENABLED=true'
   else
-    extra='--restart on-failure:3 -e REGISTRY_STORAGE_MAINTENANCE_READONLY_ENABLED=true'
+    # The read-only flag as one YAML value: registry:2 panics on it as
+    # …_READONLY_ENABLED=true (the map it builds from that has the wrong type).
+    extra='--restart on-failure:3 -e REGISTRY_STORAGE_MAINTENANCE_READONLY={"enabled":true}'
   fi
   # shellcheck disable=SC2086
   docker run --detach --name "$name" $extra \
