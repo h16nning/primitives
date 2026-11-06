@@ -40,8 +40,10 @@ case "$status" in
   *) echo "looking up the bucket $current answered $status" >&2; exit 1 ;;
 esac
 
-# One registry container on one bucket. The previous month's may exit (in a
-# strategy's first month its bucket does not exist); it is retried hourly.
+# One registry container on one bucket. In a strategy's first month the
+# previous month's bucket does not exist and that registry answers 503, which
+# the jobs read as no previous cache; the month change moves it to a bucket
+# that does.
 ensure() {
   name=$1 port=$2 bucket=$3 mode=$4
   have=$(docker inspect --format '{{ index .Config.Labels "plexus.ci.bucket" }} {{ .Config.Image }} {{ .State.Running }}' "$name" 2>/dev/null || true)

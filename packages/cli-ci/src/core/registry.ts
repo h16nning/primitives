@@ -4,8 +4,9 @@
 // the same object storage; nothing reads the bucket layout directly. The
 // GitHub-hosted jobs start them with this module; an instance's user-data
 // starts the same two containers. In the first month the previous bucket does
-// not exist and registry:2 exits: that sidecar is optional, and a build names
-// it as a cache source only when it answers.
+// not exist and registry:2 answers 503 (its storage health check fails): that
+// sidecar is optional, and a build names it as a cache source only when it
+// answers 200.
 import type { Context } from '@plexus-ms/lib';
 import { run } from '@plexus-ms/lib';
 import { Storage, sleep } from './exoscale.ts';
