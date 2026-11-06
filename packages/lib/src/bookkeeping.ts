@@ -29,6 +29,13 @@ export function bumpCollectionPin(text: string, train: string): string {
   return lines.join('\n');
 }
 
+/** Where the hybrid strategy's runner image is pinned: the role's defaults, in primitives. */
+export const RUNNER_IMAGE_PIN_FILE = 'ansible/roles/ci_hybrid_host/defaults/main.yml';
+
+/** The runner image's tag, `ghcr.io/plexus-ms/ci-runner:<train>`, which runner-image.yml pushes from the train's release. */
+export const bumpRunnerImagePin = (text: string, train: string): string =>
+  text.replace(/(ghcr\.io\/plexus-ms\/ci-runner:)\d+\.\d+\.\d+/g, `$1${train}`);
+
 export const WORKFLOW_REF = 'plexus-ms/primitives/.github/workflows/';
 
 /** Every `uses: plexus-ms/primitives/.github/workflows/<file>@<ref>` pinned to the train. */

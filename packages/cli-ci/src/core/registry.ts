@@ -93,16 +93,26 @@ export interface Sidecars {
 /**
  * Create this month's bucket when it does not exist yet (the ci-storage key
  * may), start both sidecars, wait for the current one and briefly for the
- * previous one.
+ * previous one. Where the current one answers already, the machine runs the
+ * pair for its jobs (a slot of a runner host, ci_hybrid_host, which keeps
+ * the pair on this month's buckets and gives the slot no Docker socket):
+ * nothing is started and no bucket is touched.
  */
 export async function startSidecars(
   ctx: Context,
-  storage: ObjectStorage,
+  storage: ObjectStorage | undefined,
   owner: string,
   zone: string,
   now = new Date(),
 ): Promise<Sidecars> {
   const buckets = registryBuckets(owner, now);
+  if (!ctx.dryRun && (await answers(ctx, CURRENT_PORT))) {
+    const previousAnswers = await answers(ctx, PREVIOUS_PORT);
+    ctx.say(`registry: :${CURRENT_PORT} answers already, the host's pair; nothing started`);
+    return { current: buckets.current, previous: buckets.previous, previousAnswers };
+  }
+  if (!storage)
+    throw new Error('REGISTRY_ENDPOINT, REGISTRY_REGION, REGISTRY_ACCESS_KEY and REGISTRY_SECRET_KEY are needed');
   const sos = new Storage(ctx, storage.accessKey, storage.secretKey);
   if (!(await sos.bucketExists(buckets.current))) {
     ctx.say(`→ creating the bucket ${buckets.current} in ${zone}`);

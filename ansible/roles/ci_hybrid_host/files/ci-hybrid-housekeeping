@@ -1,0 +1,33 @@
+#!/bin/sh
+# Hourly housekeeping of a hybrid runner host. Managed by Ansible
+# (ci_hybrid_host); IMAGE, REGISTRY (true | false), REGISTRY_IMAGE and
+# DISK_ALERT_PERCENT come from the unit's environment. Hand-runnable as root:
+#   IMAGE=ghcr.io/plexus-ms/ci-runner:<train> REGISTRY=true REGISTRY_IMAGE=registry:2 \
+#   DISK_ALERT_PERCENT=85 ci-hybrid-housekeeping
+set -eu
+: "${IMAGE:?}" "${REGISTRY:?}" "${REGISTRY_IMAGE:?}" "${DISK_ALERT_PERCENT:?}"
+
+# The registry pair onto this month's buckets, first: a failure here is the
+# one that costs every run of the month a cold cache.
+[ "$REGISTRY" != true ] || /usr/local/sbin/ci-registry-refresh
+
+# The pinned image, present before the next slot container needs it.
+docker pull --quiet "$IMAGE" >/dev/null
+
+# The slots run with --rm and start no containers of their own (no socket),
+# so a stopped container is one a crash left. Every image but the pinned
+# runner image and the registry's is a previous pin's; the pinned one is
+# kept although a slot between two containers leaves it unused for a moment,
+# and an image a container still uses refuses removal.
+docker container prune --force
+docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' | while read -r ref id; do
+  case "$ref" in "$IMAGE" | "$REGISTRY_IMAGE") continue ;; esac
+  docker image rm "$id" >/dev/null 2>&1 && echo "removed the image $ref" || true
+done
+
+used=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+echo "root file system ${used}% used"
+if [ "$used" -gt "$DISK_ALERT_PERCENT" ]; then
+  echo "above ${DISK_ALERT_PERCENT}%: look at /var/cache/ci-runner (the pnpm store) and docker system df" >&2
+  exit 1
+fi

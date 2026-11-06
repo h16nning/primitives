@@ -35,9 +35,11 @@ import {
   bumpGalaxyVersion,
   bumpManifestVersion,
   bumpPlxPin,
+  bumpRunnerImagePin,
   bumpWorkflowRefs,
   CONFIG_PIN,
   PLX_PIN,
+  RUNNER_IMAGE_PIN_FILE,
   stampChanged,
   stampStandard,
   today as todayOf,
@@ -265,6 +267,7 @@ async function planBookkeeping(
   const primitives = repo(PRIMITIVES);
   if (primitives) {
     await edit(primitives, 'ansible/galaxy.yml', `version → ${next}`, (t) => bumpGalaxyVersion(t, next));
+    await edit(primitives, RUNNER_IMAGE_PIN_FILE, `runner image → ${next}`, (t) => bumpRunnerImagePin(t, next));
     for (const p of TRAIN_PACKAGES)
       await edit(primitives, `${p.dir}/package.json`, `${p.name} → ${next}`, (t) => bumpManifestVersion(t, next));
   }

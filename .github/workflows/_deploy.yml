@@ -154,12 +154,20 @@ jobs:
       # An ephemeral peer for the length of the job: the client from NetBird's
       # repository at a pinned version, joined with the setup key in the
       # environment (never on argv), and the job waits until the management
-      # server lists it as connected.
+      # server lists it as connected. A runner already on the overlay (a slot
+      # of a runner host that is a peer itself, sharing its network) resolves
+      # the host's name before joining and joins nothing.
       - name: Join the overlay
         if: ${{ inputs.overlay == 'netbird' }}
         env:
           NETBIRD_VERSION: ${{ inputs.netbird-version }}
         run: |
+          host='${{ inputs.host }}'; host=${host#ssh://}; host=${host##*@}; host=${host%%:*}
+          if getent hosts "$host"; then
+            echo "this runner is on the overlay already"
+            exit 0
+          fi
+          echo "joined=true" >> "$GITHUB_ENV"
           curl -fsSL https://pkgs.netbird.io/debian/public.key | sudo gpg --dearmor -o /usr/share/keyrings/netbird-archive-keyring.gpg
           echo 'deb [signed-by=/usr/share/keyrings/netbird-archive-keyring.gpg] https://pkgs.netbird.io/debian stable main' | sudo tee /etc/apt/sources.list.d/netbird.list >/dev/null
           sudo apt-get update -qq && sudo apt-get install -y -qq "netbird=$NETBIRD_VERSION" >/dev/null
@@ -168,7 +176,6 @@ jobs:
           # The names arrive with the network map, some seconds after the
           # management connection; peers stay idle until traffic, so the
           # host's name resolving is the readiness that matters.
-          host='${{ inputs.host }}'; host=${host#ssh://}; host=${host##*@}; host=${host%%:*}
           for _ in $(seq 1 60); do getent hosts "$host" >/dev/null && break; sleep 1; done
           sudo netbird status
           getent hosts "$host"
@@ -202,5 +209,5 @@ jobs:
         if: ${{ always() }}
         run: '[ -z "${SSH_AGENT_PID:-}" ] || ssh-agent -k'
       - name: Leave the overlay
-        if: ${{ always() && inputs.overlay == 'netbird' }}
+        if: ${{ always() && env.joined == 'true' }}
         run: sudo netbird down || true

@@ -1,0 +1,226 @@
+---
+- name: Require where the slots register
+  ansible.builtin.assert:
+    that:
+      - ci_hybrid_host_scope in ['repo', 'org']
+      - ci_hybrid_host_scope != 'repo' or ci_hybrid_host_repo is match('^[^/]+/[^/]+$')
+      - ci_hybrid_host_scope != 'org' or ci_hybrid_host_org | length > 0
+    fail_msg: >-
+      ci_hybrid_host_scope is `repo` with ci_hybrid_host_repo as owner/name,
+      or `org` with ci_hybrid_host_org (and ci_hybrid_host_runner_group).
+
+- name: Install what the scripts need
+  ansible.builtin.apt:
+    name: [curl, jq, openssl]
+    state: present
+
+- name: Create the configuration directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop: [/etc/ci-runner, /etc/ci-registry]
+
+# The App's credentials: written when the run has them, kept when it does
+# not, required once.
+- name: Write the App's credentials
+  when: ci_hybrid_host_app_client_id | length > 0 and ci_hybrid_host_app_private_key | length > 0
+  no_log: true
+  ansible.builtin.copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop:
+    - dest: /etc/ci-runner/app.env
+      content: "APP_CLIENT_ID={{ ci_hybrid_host_app_client_id }}\n"
+    # A key pasted into a one-line vault field arrives with spaces for its
+    # line breaks; its lines are restored.
+    - dest: /etc/ci-runner/app.pem
+      content: |
+        {% set key = ci_hybrid_host_app_private_key | trim %}
+        {% if '\n' in key %}
+        {{ key }}
+        {% else %}
+        {% set parts = key | regex_search('^(-----BEGIN [A-Z0-9 ]+-----) (.*) (-----END [A-Z0-9 ]+-----)$', '\\1', '\\2', '\\3') %}
+        {{ parts[0] }}
+        {{ parts[1] | regex_replace(' ', '\n') }}
+        {{ parts[2] }}
+        {% endif %}
+
+- name: Check the App's credentials are on the host
+  ansible.builtin.stat:
+    path: /etc/ci-runner/app.pem
+  register: ci_hybrid_host_app_pem
+
+- name: Require the App's credentials
+  ansible.builtin.assert:
+    that: ci_hybrid_host_app_pem.stat.exists or ansible_check_mode
+    fail_msg: >-
+      The host has no App credentials and the run brought none:
+      CI_APP_CLIENT_ID and CI_APP_PRIVATE_KEY, from the CI vault's item
+      github-app through secrets.env.
+
+- name: Write where the slots register
+  ansible.builtin.copy:
+    dest: /etc/ci-runner/runner.env
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      SCOPE={{ ci_hybrid_host_scope }}
+      REPO={{ ci_hybrid_host_repo }}
+      ORG={{ ci_hybrid_host_org }}
+      GROUP='{{ ci_hybrid_host_runner_group }}'
+      HOST={{ inventory_hostname }}
+      EXTRA_LABELS={{ ci_hybrid_host_extra_labels | join(',') }}
+
+- name: Install the scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /usr/local/sbin/{{ item }}
+    owner: root
+    group: root
+    mode: "0755"
+  loop: [ci-runner-jit, ci-registry-refresh, ci-hybrid-housekeeping]
+
+- name: Create the shared caches
+  ansible.builtin.file:
+    path: "{{ ci_hybrid_host_cache_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ ci_hybrid_host_runner_uid }}"
+    group: "{{ ci_hybrid_host_runner_uid }}"
+    mode: "0755"
+  loop: ["", pnpm-store]
+
+- name: Pull the runner image
+  ansible.builtin.command:
+    cmd: docker pull {{ ci_hybrid_host_image }}
+  register: ci_hybrid_host_pull
+  changed_when: "'Downloaded newer image' in ci_hybrid_host_pull.stdout"
+
+- name: The registry pair
+  when: ci_hybrid_host_registry
+  ansible.builtin.include_tasks: registry.yml
+
+# One template unit, one instance per slot. ExecStartPre frees the name and
+# mints the slot's config; the container runs one job and exits, and
+# systemd starts the next one. A change to the unit reaches a slot when its
+# current container ends.
+- name: Install the slot unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ci-runner@.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=CI runner slot {{ inventory_hostname }}-%i
+      After=network-online.target docker.service
+      Wants=network-online.target
+      Requires=docker.service
+      StartLimitIntervalSec=0
+
+      [Service]
+      ExecStartPre=-/usr/bin/docker rm --force ci-runner-%i
+      ExecStartPre=/usr/local/sbin/ci-runner-jit %i
+      ExecStart=/usr/bin/docker run --rm --init --name ci-runner-%i \
+        --network host \
+        --env-file /run/ci-runner/%i.env \
+        -e pnpm_config_store_dir=/cache/pnpm-store \
+        -v {{ ci_hybrid_host_cache_dir }}/pnpm-store:/cache/pnpm-store \
+        {{ ci_hybrid_host_image }} ./run.sh
+      ExecStopPost=-/usr/bin/docker rm --force ci-runner-%i
+      ExecStopPost=-/usr/bin/rm -f /run/ci-runner/%i.env
+      TimeoutStartSec=5min
+      TimeoutStopSec=1min
+      Restart=always
+      RestartSec=5s
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Install the housekeeping service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ci-hybrid-housekeeping.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=CI runner host housekeeping
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      Environment=IMAGE={{ ci_hybrid_host_image }}
+      Environment=REGISTRY={{ ci_hybrid_host_registry | bool | lower }}
+      Environment=REGISTRY_IMAGE={{ ci_hybrid_host_registry_image }}
+      Environment=DISK_ALERT_PERCENT={{ ci_hybrid_host_disk_alert_percent }}
+      ExecStart=/usr/local/sbin/ci-hybrid-housekeeping
+  notify: Reload systemd
+
+- name: Install the housekeeping timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/ci-hybrid-housekeeping.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=CI runner host housekeeping
+
+      [Timer]
+      OnCalendar=hourly
+      RandomizedDelaySec=5m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the housekeeping timer
+  ansible.builtin.systemd_service:
+    name: ci-hybrid-housekeeping.timer
+    enabled: true
+    state: started
+
+- name: Name the slots
+  ansible.builtin.set_fact:
+    ci_hybrid_host_slot_names: >-
+      {%- set names = [] -%}
+      {%- for size, count in ci_hybrid_host_slots.items() -%}
+      {%- for n in range(1, (count | int) + 1) -%}
+      {%- set _ = names.append(size ~ '-' ~ n) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ names }}
+
+- name: Enable and start the slots
+  ansible.builtin.systemd_service:
+    name: ci-runner@{{ item }}.service
+    enabled: true
+    state: started
+  loop: "{{ ci_hybrid_host_slot_names }}"
+
+- name: Find the slots that are no longer configured
+  ansible.builtin.service_facts:
+
+- name: Stop and disable them
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop: >-
+    {{ ansible_facts.services | dict2items | map(attribute='key')
+       | select('match', '^ci-runner@.+\\.service$')
+       | reject('in', ci_hybrid_host_slot_names | map('regex_replace', '^(.*)$', 'ci-runner@\\1.service') | list)
+       | list }}

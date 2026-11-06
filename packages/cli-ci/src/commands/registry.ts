@@ -1,5 +1,6 @@
 // plx-ci registry: start the two registry sidecars on this machine (ci.md,
-// "The registry"), creating this month's bucket when it is missing; `exists`
+// "The registry"), creating this month's bucket when it is missing, or
+// nothing where :5000 answers already (a runner host's pair); `exists`
 // asks whether a tag is in either. From the environment: REGISTRY_ENDPOINT,
 // REGISTRY_REGION, REGISTRY_ACCESS_KEY, REGISTRY_SECRET_KEY (the vault item
 // bucket-registry), GITHUB_REPOSITORY (the owner names the buckets), ZONE.
@@ -15,14 +16,11 @@ export function register(program: Command): void {
   const registry = program
     .command('registry')
     .description(
-      'start the registry sidecars: :5000 on this month’s bucket read-write, :5001 on the previous month’s read-only',
+      'start the registry sidecars: :5000 on this month’s bucket read-write, :5001 on the previous month’s read-only; nothing where :5000 answers',
     )
     .action(async (_opts: unknown, command: Command) => {
       const ctx = contextOf(command);
-      const storage = storageFromEnv();
-      if (!storage)
-        throw new Error('REGISTRY_ENDPOINT, REGISTRY_REGION, REGISTRY_ACCESS_KEY and REGISTRY_SECRET_KEY are needed');
-      const result = await startSidecars(ctx, storage, ownerOf(need('GITHUB_REPOSITORY')), zoneOf());
+      const result = await startSidecars(ctx, storageFromEnv(), ownerOf(need('GITHUB_REPOSITORY')), zoneOf());
       ctx.result(
         result,
         (r) => `:5000 ${r.current}\n:5001 ${r.previous}${r.previousAnswers ? '' : ' (not answering)'}`,

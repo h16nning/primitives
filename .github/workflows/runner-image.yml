@@ -1,0 +1,62 @@
+name: runner-image
+
+# Builds the hybrid strategy's runner image (docker/ci-runner, § 8
+# PLX-Delivery) and pushes it to ghcr.io/plexus-ms/ci-runner with a provenance
+# attestation. On the train's GitHub release it is tagged with the train
+# number, which is the pin ci_hybrid_host carries; run by hand on a branch it
+# is tagged `sha-<commit>`, which is how a host tries an unreleased image
+# before the train (the role's `ci_hybrid_host_image`). A tag already in the
+# registry is pushed again, from the same source: the train number names one
+# commit.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/ci-runner
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    concurrency: runner-image-${{ github.ref }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Which tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: echo "tag=${RELEASE_TAG:-sha-$GITHUB_SHA}" | tee -a "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/setup-buildx-action@v4
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: docker/ci-runner
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.description=GitHub Actions runner for the container slots of ci_hybrid_host
+            org.opencontainers.image.licenses=GPL-3.0-or-later
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

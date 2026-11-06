@@ -60,6 +60,19 @@ on:
         required: false
         type: string
         default: ''
+      runner-small:
+        description: >-
+          The runner label of the small forge-side jobs (plan, release,
+          deploy-targets, deploy, teardown): GitHub's `ubuntu-latest`, or a
+          slot of the tenant's runner host (`ci-small`, ci_hybrid_host).
+        required: false
+        type: string
+        default: ubuntu-latest
+      runner-medium:
+        description: The runner label of `check`, `ubuntu-latest` or a medium slot (`ci-medium`).
+        required: false
+        type: string
+        default: ubuntu-latest
       dry-run:
         description: Deploy as `plx -n deploy`, printing the lines without reaching the host.
         required: false
@@ -103,7 +116,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner-small }}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       tests: ${{ steps.plan.outputs.tests }}
@@ -209,7 +222,7 @@ jobs:
   # needed; the Turbo remote cache in the tenant's bucket makes an unchanged
   # package free.
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner-medium }}
     steps:
       - uses: actions/checkout@v7
       - name: Load the Turbo cache bucket's keys from the vault
@@ -346,7 +359,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.apps) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner-small }}
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
@@ -400,7 +413,7 @@ jobs:
   deploy-targets:
     needs: [plan, release]
     if: ${{ always() && needs.plan.result == 'success' && needs.release.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner-small }}
     outputs:
       matrix: ${{ steps.targets.outputs.matrix }}
     steps:
@@ -473,6 +486,7 @@ jobs:
         include: ${{ fromJSON(needs.deploy-targets.outputs.matrix) }}
     uses: plexus-ms/primitives/.github/workflows/_deploy.yml@0.109.0
     with:
+      runner: ${{ inputs.runner-small }}
       tenant: ${{ inputs.tenant }}
       app: ${{ matrix.app }}
       image-ref: ${{ matrix.image }}
@@ -490,7 +504,7 @@ jobs:
   teardown:
     needs: [plan, build, test]
     if: ${{ always() && needs.plan.result != 'skipped' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner-small }}
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5

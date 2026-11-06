@@ -7,6 +7,7 @@ import {
   bumpGalaxyVersion,
   bumpManifestVersion,
   bumpPlxPin,
+  bumpRunnerImagePin,
   bumpWorkflowRefs,
   hasUnmergedEntries,
   stampChanged,
@@ -20,6 +21,12 @@ test('bumpGalaxyVersion keeps the trailing comment', () => {
     bumpGalaxyVersion('namespace: plexus\nversion: 0.1.0                # mirrors the tag\n', '0.2.0'),
     'namespace: plexus\nversion: 0.2.0                # mirrors the tag\n',
   );
+});
+
+test('bumpRunnerImagePin moves a train tag and leaves a trial tag and other images', () => {
+  const defaults =
+    'ci_hybrid_host_image: ghcr.io/plexus-ms/ci-runner:0.109.0\n# e.g. ghcr.io/plexus-ms/ci-runner:sha-abc\nci_hybrid_host_registry_image: registry:2\n';
+  assert.equal(bumpRunnerImagePin(defaults, '0.110.0'), defaults.replace('ci-runner:0.109.0', 'ci-runner:0.110.0'));
 });
 
 test('bumpCollectionPin touches only the platform collection', () => {
