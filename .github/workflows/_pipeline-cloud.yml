@@ -491,7 +491,8 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.deploy-targets.outputs.matrix) }}
-    uses: plexus-ms/primitives/.github/workflows/_deploy.yml@0.109.0
+    # TRIAL of train B1, restore @0.109.0 before ship: the deploy from a slot.
+    uses: plexus-ms/primitives/.github/workflows/_deploy.yml@b1-hybrid
     with:
       runner: ${{ inputs.runner-small }}
       tenant: ${{ inputs.tenant }}
