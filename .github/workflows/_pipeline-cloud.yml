@@ -509,9 +509,14 @@ jobs:
 
   # Delete what this run launched, whatever the jobs ended in: an instance a
   # failed job left, or a runner that never took one.
+  # Skipped where plan succeeded and launched nothing (one instance per entry
+  # of matrix and of tests, so both empty is none); a plan that failed or was
+  # cancelled may have launched part, and is torn down.
   teardown:
     needs: [plan, build, test]
-    if: ${{ always() && needs.plan.result != 'skipped' }}
+    if: >-
+      ${{ always() && needs.plan.result != 'skipped'
+          && !(needs.plan.result == 'success' && needs.plan.outputs.matrix == '[]' && needs.plan.outputs.tests == '[]') }}
     runs-on: ${{ inputs.runner-small }}
     steps:
       - uses: actions/checkout@v7
