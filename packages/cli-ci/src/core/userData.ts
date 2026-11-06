@@ -191,6 +191,32 @@ write_files:
       [Install]
       WantedBy=timers.target
 
+  # Frees the dpkg lock for the run commands. The image is weeks old, so
+  # apt-daily-upgrade's persistent timer catches up seconds into the boot, and
+  # unattended-upgrades then holds the lock for about a minute: every apt-get
+  # here failed at once, there was no docker and no runner user, and the
+  # launch kept the instance as a stalled boot. Waiting on the lock costs that
+  # minute, so the instance, which lives under an hour, masks the apt timers
+  # and services (they never start after this), kills whatever of them
+  # already runs, dpkg children included (systemctl kill takes the unit's
+  # whole cgroup), and lets dpkg finish what a kill interrupted. Masking alone
+  # is not enough: the catch-up can start before any run command does, and
+  # bootcmd is out (see above).
+  - path: /usr/local/sbin/plexus-ci-apt-free
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      units='apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service unattended-upgrades.service'
+      systemctl mask $units >/dev/null 2>&1
+      systemctl kill --signal=KILL apt-daily.service apt-daily-upgrade.service unattended-upgrades.service 2>/dev/null
+      i=0
+      while pgrep -x 'unattended-upgr|apt\\.systemd\\.dai|apt-get|apt|dpkg' >/dev/null && [ "$i" -lt 10 ]; do
+        sleep 1; i=$((i + 1))
+      done
+      systemctl stop $units 2>/dev/null
+      dpkg --configure -a
+      logger -t plexus-ci "apt-free: apt timers masked, dpkg lock free after \${i}s"
+
   # The runner, one job, then layer 1: ExecStopPost runs as root (the +) when
   # the runner exits for any reason.
   - path: /etc/systemd/system/plexus-ci-runner.service
@@ -213,6 +239,7 @@ runcmd:
   # Layers 1b, 2b and 2a first, before anything that can hang.
   - systemctl daemon-reload
   - systemctl start plexus-ci-no-job.timer plexus-ci-death.timer plexus-ci-poweroff.timer
+  - plexus-ci-apt-free
   - export DEBIAN_FRONTEND=noninteractive; apt-get update -q && apt-get install -yq --no-install-recommends ca-certificates curl jq git tar unzip
   - curl -fsSL https://get.docker.com | sh
   - useradd -m -s /bin/bash -G docker runner && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner
