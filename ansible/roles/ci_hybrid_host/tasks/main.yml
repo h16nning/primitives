@@ -97,10 +97,37 @@
   loop: ["", pnpm-store]
 
 - name: Pull the runner image
+  when: not ci_hybrid_host_image_build
   ansible.builtin.command:
     cmd: docker pull {{ ci_hybrid_host_image }}
   register: ci_hybrid_host_pull
   changed_when: "'Downloaded newer image' in ci_hybrid_host_pull.stdout"
+
+- name: Build the runner image on the host
+  when: ci_hybrid_host_image_build
+  block:
+    - name: Copy the image's build context
+      ansible.builtin.copy:
+        src: ci-runner/
+        dest: /usr/local/share/ci-runner/
+        owner: root
+        group: root
+        mode: "0644"
+        directory_mode: "0755"
+
+    - name: Which image the tag names now
+      ansible.builtin.command:
+        cmd: docker image inspect --format '{{ '{{' }}.Id{{ '}}' }}' {{ ci_hybrid_host_image }}
+      register: ci_hybrid_host_image_before
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Build it
+      ansible.builtin.command:
+        cmd: docker build --pull --quiet --tag {{ ci_hybrid_host_image }} /usr/local/share/ci-runner
+      register: ci_hybrid_host_build
+      changed_when: ci_hybrid_host_build.stdout | trim != ci_hybrid_host_image_before.stdout | trim
 
 - name: The registry pair
   when: ci_hybrid_host_registry
@@ -159,6 +186,7 @@
       [Service]
       Type=oneshot
       Environment=IMAGE={{ ci_hybrid_host_image }}
+      Environment=PULL={{ (not ci_hybrid_host_image_build) | lower }}
       Environment=REGISTRY={{ ci_hybrid_host_registry | bool | lower }}
       Environment=REGISTRY_IMAGE={{ ci_hybrid_host_registry_image }}
       Environment=DISK_ALERT_PERCENT={{ ci_hybrid_host_disk_alert_percent }}

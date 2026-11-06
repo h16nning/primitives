@@ -1,6 +1,7 @@
 name: runner-image
 
-# Builds the hybrid strategy's runner image (docker/ci-runner, § 8
+# Builds the hybrid strategy's runner image (the Dockerfile ci_hybrid_host
+# ships, ansible/roles/ci_hybrid_host/files/ci-runner, § 8
 # PLX-Delivery) and pushes it to ghcr.io/plexus-ms/ci-runner with a provenance
 # attestation. On the train's GitHub release it is tagged with the train
 # number, which is the pin ci_hybrid_host carries; run by hand on a branch it
@@ -46,7 +47,7 @@ jobs:
         id: push
         uses: docker/build-push-action@v7
         with:
-          context: docker/ci-runner
+          context: ansible/roles/ci_hybrid_host/files/ci-runner
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}

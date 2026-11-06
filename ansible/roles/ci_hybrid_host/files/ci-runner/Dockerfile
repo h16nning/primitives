@@ -3,7 +3,8 @@
 # runners and the official image leaves out. One container runs one job and
 # is removed after it (ci_hybrid_host); nothing here is a cache or a secret.
 # Built and pushed by runner-image.yml as ghcr.io/plexus-ms/ci-runner at the
-# train number, with provenance; Renovate moves the base.
+# train number, with provenance, or built on the host itself
+# (ci_hybrid_host_image_build); Renovate moves the base.
 #
 # The tools the jobs install themselves (mise and what it pins, exo, crane,
 # the 1Password CLI) stay the jobs' business: a slot runs the same steps as
