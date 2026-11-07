@@ -2,3 +2,14 @@
 - name: Reload systemd
   ansible.builtin.systemd_service:
     daemon_reload: true
+
+# The slots whose configuration changed (see tasks/main.yml): a restart ends
+# the container of each, idle or mid-job, and systemd starts the next one on
+# the new configuration. Handlers run at the flush before the slots are
+# enabled, so a slot not yet started is started here and enabled after.
+- name: Restart the slots
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+    daemon_reload: true
+  loop: "{{ ci_runner_host_slot_units }}"
