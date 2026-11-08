@@ -107,6 +107,31 @@ ci_runner_host_registry_secret_key: "{{ lookup('env', 'REGISTRY_SECRET_KEY') | d
 ci_runner_host_cache_dir: /var/cache/ci-runner
 ci_runner_host_runner_uid: 1001
 
+# A 1Password Connect server on the host (`ci_runner_host_connect`): an
+# encrypted copy of the CI vault, synced by one container and served on
+# loopback by another, so that the jobs on the slots read their secrets here
+# and never count against the account's service-account limits, which a day
+# of CI exhausts on the smaller plans (§ 8 PLX-Delivery). The slots get the
+# server's address and token in their environment, and load-secrets-action
+# prefers them over the service account token the workflows set; a launched
+# instance and the forge's runners keep the service account. Created once
+# per tenant in 1Password (Developer tools, Infrastructure Secrets
+# Management): a Connect server with access to the CI vault, its
+# 1password-credentials.json, and an access token for that vault, both kept
+# in the CI vault's item `connect` and read from secrets.env as
+# CI_CONNECT_CREDENTIALS and CI_CONNECT_TOKEN. Those names on purpose: the
+# playbook's own `op run` would take OP_CONNECT_* for itself.
+ci_runner_host_connect: false
+ci_runner_host_connect_credentials: "{{ lookup('env', 'CI_CONNECT_CREDENTIALS') | default('', true) }}"
+ci_runner_host_connect_token: "{{ lookup('env', 'CI_CONNECT_TOKEN') | default('', true) }}"
+# The images, pinned to their major; a tenant pins further by digest if it wants.
+ci_runner_host_connect_image_api: 1password/connect-api:1
+ci_runner_host_connect_image_sync: 1password/connect-sync:1
+# The user the containers run as, which owns the credentials file.
+ci_runner_host_connect_uid: 999
+# The API's port on loopback and on the Docker bridge's gateway.
+ci_runner_host_connect_port: 8080
+
 # Housekeeping, hourly: the registry pair onto this month's buckets, the
 # pinned image pulled, stopped containers, unused images and volumes removed; fails,
 # and so mails through configure_mail, when the root file system is fuller

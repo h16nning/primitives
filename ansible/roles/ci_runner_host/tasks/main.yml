@@ -109,7 +109,7 @@
     owner: root
     group: root
     mode: "0755"
-  loop: [ci-runner-jit, ci-runner-slot, ci-registry-refresh, ci-runner-housekeeping]
+  loop: [ci-runner-jit, ci-runner-slot, ci-registry-refresh, ci-connect-refresh, ci-runner-housekeeping]
 
 - name: Create the shared caches
   ansible.builtin.file:
@@ -158,6 +158,27 @@
 - name: The registry pair
   when: ci_runner_host_registry
   ansible.builtin.include_tasks: registry.yml
+
+- name: The Connect server
+  when: ci_runner_host_connect
+  ansible.builtin.include_tasks: connect.yml
+
+- name: No Connect server
+  when: not ci_runner_host_connect
+  block:
+    # Without Connect the slots read with the workflow's service account token.
+    - name: Remove the slots' Connect token
+      ansible.builtin.file:
+        path: /etc/ci-runner/connect.env
+        state: absent
+      notify: Restart the slots
+
+    - name: Stop the Connect server
+      ansible.builtin.command:
+        cmd: docker rm --force op-connect-api op-connect-sync
+      register: ci_runner_host_connect_removed
+      changed_when: ci_runner_host_connect_removed.stdout | length > 0
+      failed_when: false
 
 # What a slot's container is made of: the image and the cache for every
 # slot, the memory limit per size. ci-runner-slot reads both at the start of

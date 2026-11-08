@@ -1,0 +1,88 @@
+---
+# A 1Password Connect server on the host: an encrypted copy of the CI vault,
+# synced by one container and served on loopback by another, so that the
+# jobs on the slots read their secrets here and never count against the
+# account's service-account limits (§ 8 PLX-Delivery). The credentials file
+# and the access token come from the CI vault at playbook time, like the
+# App's key; written when the run has them, kept when it does not.
+- name: Create Connect's directory
+  ansible.builtin.file:
+    path: /etc/op-connect
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write Connect's credentials file
+  when: ci_runner_host_connect_credentials | length > 0
+  no_log: true
+  ansible.builtin.copy:
+    dest: /etc/op-connect/1password-credentials.json
+    # The containers run as their own user and read the file through a mount.
+    owner: "{{ ci_runner_host_connect_uid }}"
+    group: "{{ ci_runner_host_connect_uid }}"
+    mode: "0400"
+    content: "{{ ci_runner_host_connect_credentials }}"
+  register: ci_runner_host_connect_credentials_file
+
+- name: Check the credentials file is on the host
+  ansible.builtin.stat:
+    path: /etc/op-connect/1password-credentials.json
+  register: ci_runner_host_connect_credentials_stat
+
+- name: Require the credentials file
+  ansible.builtin.assert:
+    that: ci_runner_host_connect_credentials_stat.stat.exists or ansible_check_mode
+    fail_msg: >-
+      The host has no credentials for the Connect server and the run brought
+      none: CI_CONNECT_CREDENTIALS (the 1password-credentials.json) and
+      CI_CONNECT_TOKEN, from the CI vault's item connect through secrets.env;
+      or ci_runner_host_connect false.
+
+- name: Write what Connect runs
+  ansible.builtin.copy:
+    dest: /etc/op-connect/connect.env
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      IMAGE_API={{ ci_runner_host_connect_image_api }}
+      IMAGE_SYNC={{ ci_runner_host_connect_image_sync }}
+      PORT={{ ci_runner_host_connect_port }}
+      CREDENTIALS=/etc/op-connect/1password-credentials.json
+
+- name: Start the Connect server
+  ansible.builtin.command:
+    cmd: /usr/local/sbin/ci-connect-refresh
+  environment:
+    RECREATE: "{{ ci_runner_host_connect_credentials_file is changed }}"
+  register: ci_runner_host_connect_refresh
+  changed_when: ci_runner_host_connect_refresh.stdout | length > 0
+
+# What a slot's container gets, so that the job's secret reads go to the
+# server: load-secrets-action prefers Connect over the service account token
+# the workflow also sets. The large slot has a network of its own and reaches
+# the host at Docker's host gateway; the small and medium slots share the
+# host's network and use loopback (ci-runner-slot sets the host).
+- name: Write the slots' Connect token
+  when: ci_runner_host_connect_token | length > 0
+  no_log: true
+  ansible.builtin.copy:
+    dest: /etc/ci-runner/connect.env
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      OP_CONNECT_TOKEN={{ ci_runner_host_connect_token }}
+      OP_CONNECT_PORT={{ ci_runner_host_connect_port }}
+  notify: Restart the slots
+
+- name: Check the slots' Connect token is on the host
+  ansible.builtin.stat:
+    path: /etc/ci-runner/connect.env
+  register: ci_runner_host_connect_token_stat
+
+- name: Require the slots' Connect token
+  ansible.builtin.assert:
+    that: ci_runner_host_connect_token_stat.stat.exists or ansible_check_mode
+    fail_msg: The host has no Connect token for the slots and the run brought none (CI_CONNECT_TOKEN).

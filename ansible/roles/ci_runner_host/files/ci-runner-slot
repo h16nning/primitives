@@ -30,6 +30,19 @@ set -- --rm --init --name "ci-runner-$instance" \
   -e pnpm_config_store_dir=/cache/pnpm-store \
   -v "$CACHE_DIR/pnpm-store:/cache/pnpm-store"
 [ -z "$MEMORY" ] || set -- "$@" --memory "$MEMORY"
+# The host's Connect server, where the role runs one (/etc/ci-runner/connect.env:
+# OP_CONNECT_TOKEN and OP_CONNECT_PORT): the job's secret reads go there. A
+# small or medium slot reaches it on loopback; the large slot, on a network
+# of its own, at Docker's host gateway.
+connect_host=
+if [ -f /etc/ci-runner/connect.env ]; then
+  # shellcheck source=/dev/null
+  . /etc/ci-runner/connect.env
+  set -- "$@" --env-file /etc/ci-runner/connect.env
+  connect_host=127.0.0.1
+  [ "$size" != large ] || connect_host=host.docker.internal
+  set -- "$@" -e "OP_CONNECT_HOST=http://$connect_host:$OP_CONNECT_PORT"
+fi
 case "$size" in
   large)
     # The daemon inside starts as root and hands over to the runner user;
@@ -37,6 +50,7 @@ case "$size" in
     # no-new-privileges buys nothing here and is lifted, which lets a job
     # install system packages as it would on a machine of its own.
     set -- "$@" --privileged --security-opt no-new-privileges=false --user 0 \
+      --add-host host.docker.internal:host-gateway \
       -v /var/lib/docker "$IMAGE" ci-runner-dind
     ;;
   *)
