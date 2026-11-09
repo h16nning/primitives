@@ -54,28 +54,32 @@ write_files:
       REGISTRY_SECRET_KEY=@@REGISTRY_SECRET_KEY@@
       RUNNER_VERSION=@@RUNNER_VERSION@@
       RUNNER_SHA256=@@RUNNER_SHA256@@
-      EXO_VERSION=@@EXO_VERSION@@
   - path: /etc/plexus-ci/jitconfig
     permissions: "0600"
     content: "@@JITCONFIG@@"
 
-  # exo, fetched on demand so that self-delete works before runcmd got to it.
-  # The env file is sourced exported (set -a): exo reads the key from the
-  # environment, and a plain source would leave it shell-local. A timer's
-  # service has no HOME, and exo refuses to run without one (layers 1b and
-  # 2b failed on it on 2026-11-04); the runner's unit has a user.
-  - path: /usr/local/sbin/plexus-ci-exo
+  # The cloud's API with curl, signed with the self-delete key (EXO2-HMAC-SHA256,
+  # as egoscale signs: method and path, body, the query's values, the signed
+  # headers, the expiry, each on a line). Nothing to download: the instance's
+  # own rescue must not depend on the forge or a release server, which were
+  # the ones down when twelve instances missed on 2026-11-08. The env file is
+  # sourced exported (set -a), so that a timer's service without HOME or a
+  # login environment has the key all the same.
+  #
+  #   plexus-ci-exo-api METHOD /v2/<path> [BODY]
+  - path: /usr/local/sbin/plexus-ci-exo-api
     permissions: "0755"
     content: |
       #!/bin/sh
       set -eu
       set -a; . /etc/plexus-ci/env; set +a
-      export HOME="\${HOME:-/root}"
-      if [ ! -x /usr/local/bin/exo ]; then
-        curl -fsSL "https://github.com/exoscale/cli/releases/download/v\${EXO_VERSION}/exoscale-cli_\${EXO_VERSION}_linux_amd64.tar.gz" \\
-          | tar -xz -C /usr/local/bin exo
-      fi
-      exec /usr/local/bin/exo "$@"
+      method=$1 path=$2 body=\${3:-}
+      expires=$(( $(date +%s) + 600 ))
+      signature=$(printf '%s %s\\n%s\\n\\n\\n%s' "$method" "$path" "$body" "$expires" |
+        openssl dgst -sha256 -hmac "$EXOSCALE_API_SECRET" -binary | base64 -w0)
+      curl -fsS --max-time 30 -X "$method" -H "Content-Type: application/json" \\
+        -H "Authorization: EXO2-HMAC-SHA256 credential=$EXOSCALE_API_KEY,expires=$expires,signature=$signature" \\
+        \${body:+--data "$body"} "https://api-$ZONE.exoscale.com$path"
 
   - path: /usr/local/sbin/plexus-ci-mail
     permissions: "0755"
@@ -102,7 +106,7 @@ write_files:
     permissions: "0755"
     content: |
       #!/bin/sh
-      # Deletes this instance with the self-delete key; its id comes from the
+      # Deletes this instance with the self-delete key, through the API with curl; its id comes from the
       # metadata service. Logged either way; a failure leaves layers 2a and 5.
       set -u
       set -a; . /etc/plexus-ci/env; set +a
@@ -112,7 +116,7 @@ write_files:
       [ "\${SELF_LAYERS:-on}" != off ] || { logger -t plexus-ci "self-delete ($1): layers off, not deleting"; exit 0; }
       id=$(curl -fsS --max-time 10 http://metadata.exoscale.com/latest/meta-data/instance-id) || id=
       logger -t plexus-ci "self-delete ($1): instance \${id:-unknown}"
-      [ -n "$id" ] && plexus-ci-exo compute instance delete "$id" -z "$ZONE" -f -Q 2>&1 | logger -t plexus-ci \\
+      [ -n "$id" ] && plexus-ci-exo-api DELETE "/v2/instance/$id" 2>&1 | logger -t plexus-ci \\
         || logger -t plexus-ci "self-delete ($1) failed"
 
   - path: /usr/local/sbin/plexus-ci-no-job
@@ -244,7 +248,6 @@ runcmd:
   - useradd -m -s /bin/bash -G docker runner && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner
   - cp /etc/plexus-ci/jitconfig /etc/plexus-ci/jitconfig.runner && chown runner:runner /etc/plexus-ci/jitconfig.runner && mv /etc/plexus-ci/jitconfig.runner /etc/plexus-ci/jitconfig
   - . /etc/plexus-ci/env && mkdir -p /opt/runner && cd /opt/runner && curl -fsSLo runner.tgz "https://github.com/actions/runner/releases/download/v\${RUNNER_VERSION}/actions-runner-linux-x64-\${RUNNER_VERSION}.tar.gz" && echo "\${RUNNER_SHA256}  runner.tgz" | sha256sum -c - && tar -xzf runner.tgz && rm runner.tgz && ./bin/installdependencies.sh >/dev/null && chown -R runner:runner /opt/runner
-  - plexus-ci-exo version >/dev/null
   # The registry sidecars, when the launch named a bucket (§ 8 PLX-Delivery): :5000 on this month's bucket, read-write; :5001 on the previous month's, read-only. The same two containers as .github/ci/registry.sh starts on a GitHub runner.
   - . /etc/plexus-ci/env && if [ -n "$REGISTRY_ENDPOINT" ]; then docker run -d --name registry --restart unless-stopped -p 127.0.0.1:5000:5000 -e REGISTRY_STORAGE=s3 -e REGISTRY_STORAGE_S3_REGIONENDPOINT="$REGISTRY_ENDPOINT" -e REGISTRY_STORAGE_S3_REGION="$REGISTRY_REGION" -e REGISTRY_STORAGE_S3_BUCKET="$REGISTRY_BUCKET" -e REGISTRY_STORAGE_S3_ACCESSKEY="$REGISTRY_ACCESS_KEY" -e REGISTRY_STORAGE_S3_SECRETKEY="$REGISTRY_SECRET_KEY" -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE=true -e REGISTRY_STORAGE_DELETE_ENABLED=true registry:2 >/dev/null; fi
   - . /etc/plexus-ci/env && if [ -n "$REGISTRY_ENDPOINT" ]; then docker run -d --name registry-previous --restart on-failure:3 -p 127.0.0.1:5001:5000 -e REGISTRY_STORAGE=s3 -e REGISTRY_STORAGE_S3_REGIONENDPOINT="$REGISTRY_ENDPOINT" -e REGISTRY_STORAGE_S3_REGION="$REGISTRY_REGION" -e REGISTRY_STORAGE_S3_BUCKET="$REGISTRY_PREVIOUS_BUCKET" -e REGISTRY_STORAGE_S3_ACCESSKEY="$REGISTRY_ACCESS_KEY" -e REGISTRY_STORAGE_S3_SECRETKEY="$REGISTRY_SECRET_KEY" -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE=true -e 'REGISTRY_STORAGE_MAINTENANCE_READONLY={"enabled":true}' registry:2 >/dev/null; fi

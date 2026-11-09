@@ -69,7 +69,6 @@ export const DEFAULTS = {
   tries: 2,
   runnerVersion: '2.338.2',
   runnerSha256: 'baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40',
-  exoVersion: '1.103.2',
   /** What the API accepts, base64 characters. */
   userDataLimit: 32768,
 } as const;
@@ -102,7 +101,6 @@ export function renderUserData(options: LaunchOptions, jitconfig: string, now: D
     RUN: options.run.runId,
     RUNNER_VERSION: DEFAULTS.runnerVersion,
     RUNNER_SHA256: DEFAULTS.runnerSha256,
-    EXO_VERSION: DEFAULTS.exoVersion,
     JITCONFIG: jitconfig,
     SELF_DELETE_KEY: options.selfDelete.key,
     SELF_DELETE_SECRET: options.selfDelete.secret,
