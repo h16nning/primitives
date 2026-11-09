@@ -1,6 +1,6 @@
 // The offline harness of the deploy verb, reborn from ci-cd's bash days: a
 // fake `ssh` on PATH that runs each remote one-liner locally with bash, in a
-// scratch app dir standing in for /opt/stacks/<tenant>/<app>, with a fake
+// scratch app dir standing in for /opt/stacks/<app>, with a fake
 // `docker` and a fake `curl` next to it. Every docker call is appended to
 // FAKE_LOG; the fake docker keeps "what runs" in <app dir>/.running, read by
 // `compose ps`/`inspect`, written by `compose up`, so reality on the fake host
@@ -124,7 +124,7 @@ function run(options: Options, checkout: string, appDir: string, image: string, 
   process.env.PATH = `${BIN}:${process.env.PATH}`;
   Object.assign(process.env, env);
   const ctx = new Context(options, io);
-  return deploy(ctx, { host: 'deploy@fake', tenant: 't', app: 'web', image, appDir, dir: checkout, retries: 1 })
+  return deploy(ctx, { host: 'deploy@fake', app: 'web', image, appDir, dir: checkout, retries: 1 })
     .finally(() => {
       process.env = saved;
     })

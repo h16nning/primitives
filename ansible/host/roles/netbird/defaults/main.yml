@@ -1,0 +1,16 @@
+---
+# A use-once setup key, needed only while the host has not joined; taken
+# from the environment so it is never committed.
+netbird_setup_key: "{{ lookup('ansible.builtin.env', 'NETBIRD_SETUP_KEY') }}"
+
+# Management server to join. Empty = NetBird Cloud
+netbird_management_url: ""
+
+# Let unattended-upgrades (upgrades) upgrade NetBird too,
+# so the client does not fall behind the management server. The package's
+# postinst restarts the daemon; the overlay interface blinks for a moment and
+# the peer re-ups from its stored config, no setup key involved.
+netbird_unattended_upgrades: true
+
+# Opt-in: the shipped playbooks run this role only where it is true.
+netbird_enabled: false

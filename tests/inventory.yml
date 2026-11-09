@@ -1,0 +1,8 @@
+# A fixture inventory naming every group the shipped playbooks target, so
+# `mise :check` can syntax-check them; never run.
+platform: { hosts: { fixture: {} } }
+ci: { hosts: { fixture: {} } }
+proxmox: { hosts: { fixture: {} } }
+pbs: { hosts: { fixture: {} } }
+haproxy: { hosts: { fixture: {} } }
+guests: { hosts: { fixture: {} } }

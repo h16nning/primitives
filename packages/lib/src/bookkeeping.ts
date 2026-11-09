@@ -7,30 +7,34 @@
 // nobody else's; the update bot is told to leave them alone.
 import { setFrontmatterField } from './frontmatter.ts';
 
+/** The four collections of `primitives`, each with a `galaxy.yml` of its own (§ 2 PLX-Platform). */
+export const COLLECTIONS = ['host', 'platform', 'infrastructure', 'ci'] as const;
+
+/** A collection's `galaxy.yml` in `primitives`. */
+export const galaxyFile = (collection: string): string => `ansible/${collection}/galaxy.yml`;
+
 /** `galaxy.yml` mirrors the tag: SCM installs record this version and reinstall on any different one. */
 export const bumpGalaxyVersion = (text: string, train: string): string =>
   text.replace(/^(version: )\d+\.\d+\.\d+/m, `$1${train}`);
 
-/** The git source of the `plexus.platform` collection, as a platform repo's requirements name it. */
+/** The git source of the `plexus.*` collections, as an operations repo's requirements name it. */
 export const COLLECTION_SOURCE = 'plexus-ms/primitives.git';
 
-/** The `plexus.platform` collection's pin in a platform repo's requirements; another collection in the same file stays. */
+/** The `plexus.*` collections' pins in an operations repo's requirements, every entry from `primitives`; a collection from elsewhere in the same file stays. */
 export function bumpCollectionPin(text: string, train: string): string {
   const lines = text.split('\n');
-  const start = lines.findIndex((l) => l.includes(COLLECTION_SOURCE));
-  if (start === -1) return text;
-  for (let i = start; i < lines.length; i++) {
-    const m = /^(\s*version: )v?[\d.]+$/.exec(lines[i] ?? '');
-    if (m) {
-      lines[i] = `${m[1]}${train}`;
-      break;
-    }
+  let ours = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (/^\s*- /.test(line)) ours = line.includes(COLLECTION_SOURCE);
+    const m = /^(\s*version: )v?[\d.]+$/.exec(line);
+    if (ours && m) lines[i] = `${m[1]}${train}`;
   }
   return lines.join('\n');
 }
 
 /** Where the runner image of a runner host's slots is pinned: the role's defaults, in primitives. */
-export const RUNNER_IMAGE_PIN_FILE = 'ansible/roles/ci_runner_host/defaults/main.yml';
+export const RUNNER_IMAGE_PIN_FILE = 'ansible/ci/roles/actions_runners/defaults/main.yml';
 
 /** The runner image's tag, `ghcr.io/plexus-ms/ci-runner:<train>`, which runner-image.yml pushes from the train's release. */
 export const bumpRunnerImagePin = (text: string, train: string): string =>

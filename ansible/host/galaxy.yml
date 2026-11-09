@@ -1,0 +1,20 @@
+namespace: plexus             # not "plexus-ms": collection namespaces forbid hyphens
+name: host
+version: 0.113.0                # mirrors the release-train tag — written by plx ship.
+                              # SCM installs record this version (a moved git tag alone is a silent
+                              # no-op on reinstall); ansible-galaxy reinstalls on any DIFFERENT version.
+readme: README.md
+authors:
+  - David Julian Albers
+description: >-
+  The host baseline every Plexus host gets, whichever layer's playbook mounts it (§ 2 PLX-
+  Platform): base, hostname, netbird, iam, upgrades, mail, docker, alloy, firewall, sshd. No
+  playbook of its own; the plexus.platform, plexus.infrastructure and plexus.ci playbooks list
+  these roles.
+license:
+  - GPL-3.0-or-later
+repository: https://github.com/plexus-ms/primitives
+tags: [infrastructure, linux]
+dependencies:
+  community.general: ">=9.0.0"
+  ansible.posix: ">=1.5.0"

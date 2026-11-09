@@ -4,7 +4,7 @@
 //   preflight (plx itself not behind its newest release, self.ts; every train
 //   repo on main, clean, not behind origin, the latest tags in agreement; gh
 //   logged in; no mutable release on any train repo)
-//   → phase one: primitives' bookkeeping (galaxy version, the train-versioned
+//   → phase one: primitives' bookkeeping (galaxy versions, the train-versioned
 //     packages' manifests, its own workflow refs), commit, tag, push, GitHub
 //     release — which locks the tag and runs primitives' release workflow
 //   → wait until the three packages are on npm at the train number
@@ -37,7 +37,9 @@ import {
   bumpPlxPin,
   bumpRunnerImagePin,
   bumpWorkflowRefs,
+  COLLECTIONS,
   CONFIG_PIN,
+  galaxyFile,
   PLX_PIN,
   RUNNER_IMAGE_PIN_FILE,
   stampChanged,
@@ -266,15 +268,16 @@ async function planBookkeeping(
 
   const primitives = repo(PRIMITIVES);
   if (primitives) {
-    await edit(primitives, 'ansible/galaxy.yml', `version → ${next}`, (t) => bumpGalaxyVersion(t, next));
+    for (const c of COLLECTIONS)
+      await edit(primitives, galaxyFile(c), `plexus.${c} version → ${next}`, (t) => bumpGalaxyVersion(t, next));
     await edit(primitives, RUNNER_IMAGE_PIN_FILE, `runner image → ${next}`, (t) => bumpRunnerImagePin(t, next));
     for (const p of TRAIN_PACKAGES)
       await edit(primitives, `${p.dir}/package.json`, `${p.name} → ${next}`, (t) => bumpManifestVersion(t, next));
   }
-  // Only the plexus.platform collection's pin: a second collection in the same file stays untouched.
-  const platformPreset = repo('preset-repo-platform');
-  if (platformPreset)
-    await edit(platformPreset, 'template/requirements.yml', `plexus.platform pin → ${next}`, (t) =>
+  // Only the pins of the plexus.* collections: a collection from elsewhere in the same file stays untouched.
+  const operationsPreset = repo('preset-repo-operations');
+  if (operationsPreset)
+    await edit(operationsPreset, 'template/requirements.yml', `plexus.* pins → ${next}`, (t) =>
       bumpCollectionPin(t, next),
     );
   for (const r of repos) {

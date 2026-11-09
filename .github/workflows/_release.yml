@@ -18,14 +18,10 @@ name: _release
 on:
   workflow_call:
     inputs:
-      tenant:
-        description: Tenant slug, the first segment of the app dirs on the hosts (§ 3 PLX-Tenancy).
-        required: true
-        type: string
       strategy:
         description: >-
           Where the jobs run (§ 8 PLX-Delivery): `github`, the forge's runners;
-          `on-prem`, the slots of the tenant's runner hosts (ci_runner_host)
+          `on-prem`, the slots of the tenant's runner hosts (actions_runners)
           for every size; `hybrid`, slots for the small and medium jobs and a
           throwaway cloud instance for each large one.
         required: false
@@ -135,7 +131,7 @@ jobs:
           REGISTRY_ACCESS_KEY: op://${{ env.VAULT }}/bucket-registry/access-key-id
           REGISTRY_SECRET_KEY: op://${{ env.VAULT }}/bucket-registry/secret-access-key
       # Into the job's home, not /usr/local: a small or medium slot of a runner
-      # host (ci_runner_host) runs with no-new-privileges, so sudo is no option.
+      # host (actions_runners) runs with no-new-privileges, so sudo is no option.
       - name: Install crane
         run: |
           mkdir -p "$HOME/.local/bin" && echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -167,7 +163,6 @@ jobs:
     uses: plexus-ms/primitives/.github/workflows/_deploy.yml@0.113.0
     with:
       strategy: ${{ inputs.strategy }}
-      tenant: ${{ inputs.tenant }}
       app: ${{ matrix.app }}
       image-ref: ${{ matrix.image }}
       host: ${{ matrix.host }}

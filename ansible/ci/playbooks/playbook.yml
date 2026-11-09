@@ -1,0 +1,41 @@
+---
+# The tenant's own CI capacity (§ 8 PLX-Delivery): a host that runs the
+# container slots the tenant's pipelines queue their small and medium jobs
+# on, and nothing else — no apps, no ingress. Mounted on the inventory group
+# `ci`; a guest of the tenant's hypervisor is created and reached through the
+# plexus.infrastructure playbook first.
+#
+#   ansible-playbook plexus.ci.playbook
+#   ansible-playbook plexus.ci.playbook --limit vm109 --tags actions_runners
+#
+# Tags: every play carries its layer (`host`, `ci`) and every role its own
+# name. The slots mint their runner configs with the tenant's CI App and read
+# the registry buckets with the storage key, both from the environment the
+# wrapper resolves (secrets.env).
+- name: Host baseline of the CI hosts
+  hosts: ci
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.base, tags: [base] }
+    - { role: plexus.host.hostname, tags: [hostname], when: hostname_enabled }
+    - { role: plexus.host.netbird, tags: [netbird], when: netbird_enabled }
+    - { role: plexus.host.iam, tags: [iam] }
+    - { role: plexus.host.upgrades, tags: [upgrades] }
+    - { role: plexus.host.mail, tags: [mail] }
+    - { role: plexus.host.docker, tags: [docker] }
+
+- name: The runner slots
+  hosts: ci
+  become: true
+  tags: [ci]
+  roles:
+    - { role: plexus.ci.actions_runners, tags: [actions_runners] }
+
+- name: Lock down the CI hosts
+  hosts: ci
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.firewall, tags: [firewall] } # after the roles that open ports in it
+    - { role: plexus.host.sshd, tags: [sshd] }         # last: closes root logins once an admin has logged in

@@ -1,0 +1,20 @@
+namespace: plexus             # not "plexus-ms": collection namespaces forbid hyphens
+name: infrastructure
+version: 0.113.0                # mirrors the release-train tag — written by plx ship.
+                              # SCM installs record this version (a moved git tag alone is a silent
+                              # no-op on reinstall); ansible-galaxy reinstalls on any DIFFERENT version.
+readme: README.md
+authors:
+  - David Julian Albers
+description: >-
+  The infrastructure layer (PLX-Infrastructure): a Proxmox hypervisor, its guests from the stock
+  Debian image, a backup server for them and an ingress VM — proxmox, guests, guest_agent, pbs,
+  haproxy — and the playbook plexus.infrastructure.playbook on the inventory groups proxmox, pbs,
+  haproxy and guests.
+license:
+  - GPL-3.0-or-later
+repository: https://github.com/plexus-ms/primitives
+tags: [infrastructure, cloud]
+dependencies:
+  community.general: ">=9.0.0"
+  ansible.posix: ">=1.5.0"

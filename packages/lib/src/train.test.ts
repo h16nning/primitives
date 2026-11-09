@@ -52,7 +52,7 @@ test('readTrain reads tags and pending commits and detects skew', async () => {
   assert.deepEqual(train.repos.find((r) => r.name === 'compendium')?.pending, ['abc fix: thing']);
   assert.deepEqual(
     phasesOf(train).map((phase) => phase.map((r) => r.name)),
-    [['primitives'], ['preset-repo-web', 'preset-app-nextjs', 'preset-repo-platform', 'compendium']],
+    [['primitives'], ['preset-repo-turbo', 'preset-app-nextjs', 'preset-repo-operations', 'compendium']],
     'primitives alone first, then the rest',
   );
   assert.deepEqual(PHASES.flat(), [...TRAIN_REPOS]);
@@ -65,7 +65,7 @@ test('readTrain reads tags and pending commits and detects skew', async () => {
   assert.equal(skewed.last, '0.2.0');
   assert.throws(
     () => resolveVersion(skewed, undefined, false),
-    /latest tags disagree:\n {2}primitives: 0.2.0\n {2}preset-repo-web: 0.1.0[\s\S]*--train 0.2.0/,
+    /latest tags disagree:\n {2}primitives: 0.2.0\n {2}preset-repo-turbo: 0.1.0[\s\S]*--train 0.2.0/,
   );
   assert.equal(resolveVersion(skewed, '0.2.0', false), '0.2.0');
   assert.equal(resolveVersion(skewed, undefined, true), '0.2.0');

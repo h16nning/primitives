@@ -38,7 +38,15 @@ export {
   readChangeset,
   workspaceGlobs,
 } from './changeset.ts';
-export { type Consumer, expectedBranch, findConsumers, presetSource, type Site } from './consumers.ts';
+export {
+  type Consumer,
+  expectedBranch,
+  findConsumers,
+  presetOf,
+  presetSource,
+  RENAMED_PRESETS,
+  type Site,
+} from './consumers.ts';
 export { Context, type Options } from './context.ts';
 export { ANSWERS_FILE, type Answers, COPIER_VERSION, copierVia, parseAnswers, TEMPLATE_FILES } from './copier.ts';
 export { type Deploy, type DeployOptions, defaultAppDir, deploy, q as shellQuote, renderCompose } from './deploy.ts';

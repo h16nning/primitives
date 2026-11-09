@@ -107,7 +107,7 @@ export interface Sidecars {
  * Create this month's bucket when it does not exist yet (the ci-storage key
  * may), start both sidecars, wait for the current one and briefly for the
  * previous one. Where the current one answers already, the machine runs the
- * pair for its jobs (a slot of a runner host, ci_runner_host, which keeps
+ * pair for its jobs (a slot of a runner host, actions_runners, which keeps
  * the pair on this month's buckets and gives the slot no Docker socket):
  * nothing is started and no bucket is touched.
  */

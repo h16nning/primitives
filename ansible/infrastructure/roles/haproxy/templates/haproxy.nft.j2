@@ -1,0 +1,37 @@
+add rule inet firewall input iifname "{{ haproxy_internal_interface }}" accept comment "the tenant VMs"
+{% if haproxy_public_tcp | length > 0 %}
+add rule inet firewall input tcp dport { {{ haproxy_public_tcp | join(', ') }} } accept
+{% endif %}
+{% for b in haproxy_backends if b.ssh_port is defined %}
+add rule inet firewall input tcp dport {{ b.ssh_port }} accept comment "forwarded SSH to {{ b.name }} (DNAT below)"
+{% endfor %}
+
+table inet haproxy
+delete table inet haproxy
+
+table inet haproxy {
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        # tenant VMs → internet
+        iifname "{{ haproxy_internal_interface }}" oifname "{{ haproxy_public_interface }}" accept
+        # forwarded SSH, after DNAT
+{% for b in haproxy_backends if b.ssh_port is defined %}
+        ip daddr {{ b.address }} tcp dport 22 ct status dnat accept
+{% endfor %}
+    }
+
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+{% for b in haproxy_backends if b.ssh_port is defined %}
+        iifname "{{ haproxy_public_interface }}" tcp dport {{ b.ssh_port }} dnat ip to {{ b.address }}:22
+{% endfor %}
+    }
+
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr {{ haproxy_internal_network }} oifname "{{ haproxy_public_interface }}" masquerade
+    }
+}

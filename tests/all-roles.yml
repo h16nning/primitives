@@ -1,27 +1,26 @@
-# Lists every role of the collection so `mise :check` can syntax-check them
-# all; tests/all-roles-listed.sh fails when a role is missing here. Never run.
-- name: Every role of the collection
+# Lists every role of the four collections so `mise :check` can syntax-check
+# them all; tests/all-roles-listed.sh fails when a role is missing here. Never run.
+- name: Every role of the collections
   hosts: all
   roles:
-    - ci_runner_host
-    - configure_apps
-    - configure_base
-    - configure_deploy_user
-    - configure_firewall
-    - configure_guests
-    - configure_haproxy
-    - configure_hostname
-    - configure_iam
-    - configure_ingress
-    - configure_mail
-    - configure_pbs
-    - configure_proxmox
-    - configure_secrets
-    - configure_sshd
-    - configure_unattended_upgrades
-    - github_runner
-    - install_alloy
-    - install_and_join_netbird
-    - install_caddy
-    - install_docker
-    - install_qemu_guest_agent
+    - plexus.ci.actions_runners
+    - plexus.host.alloy
+    - plexus.host.base
+    - plexus.host.docker
+    - plexus.host.firewall
+    - plexus.host.hostname
+    - plexus.host.iam
+    - plexus.host.mail
+    - plexus.host.netbird
+    - plexus.host.sshd
+    - plexus.host.upgrades
+    - plexus.infrastructure.guest_agent
+    - plexus.infrastructure.guests
+    - plexus.infrastructure.haproxy
+    - plexus.infrastructure.pbs
+    - plexus.infrastructure.proxmox
+    - plexus.platform.apps
+    - plexus.platform.caddy
+    - plexus.platform.deploy_user
+    - plexus.platform.ingress
+    - plexus.platform.secrets

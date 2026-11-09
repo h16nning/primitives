@@ -27,7 +27,7 @@
 //   plx -y propagate ~/dev --train 0.66.0 # unattended: copier takes defaults
 import { join, relative } from 'node:path';
 import { bumpWorkflowRefs, hasConflictMarkers, hasUnmergedEntries, syncMarker, WORKFLOW_REF } from './bookkeeping.ts';
-import { type Consumer, findConsumers, presetSource, type Site } from './consumers.ts';
+import { type Consumer, findConsumers, presetSource, RENAMED_PRESETS, type Site } from './consumers.ts';
 import type { Context } from './context.ts';
 import { ANSWERS_FILE, copierVia, parseAnswers } from './copier.ts';
 import { run, write } from './effects.ts';
@@ -198,6 +198,24 @@ async function updateSite(
       );
     } else {
       ctx.say(`→ ${site.rel}: copier update${take.ref ? ` to ${take.ref}` : ''}`);
+      // A preset renamed on a train: the answers still name the old source,
+      // which copier would clone through the forge's redirect; point them at
+      // the current name first, committed because copier refuses a dirty
+      // subproject.
+      const answers = await ctx.readFile(join(target, ANSWERS_FILE));
+      const current = presetSource(site.preset);
+      const recorded = /^_src_path: (.*)$/m.exec(answers)?.[1];
+      if (
+        recorded &&
+        recorded !== current &&
+        Object.keys(RENAMED_PRESETS).some((old) => presetSource(old) === recorded)
+      ) {
+        ctx.say(`  ${site.rel}: the preset is ${current} now; the answers follow`);
+        await ctx.stage(
+          write(join(target, ANSWERS_FILE), answers.replace(/^_src_path: .*$/m, `_src_path: ${current}`)),
+        );
+        await previewCommit(ctx, dir, `plx: ${site.rel} reads ${current}, the preset's name since its rename`);
+      }
       // Template tasks (mise install, hook setup) serve a developer's checkout,
       // not a pull request. Unattended, a new question takes its default; on a
       // terminal copier asks. A dry run previews on the scratch checkout, so

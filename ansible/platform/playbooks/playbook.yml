@@ -1,0 +1,50 @@
+---
+# The platform layer on a tenant's app hosts (PLX-Platform): the host
+# baseline, then what makes the host run the tenant's apps, then the lock-down
+# roles that have to come last. Mounted on the inventory group `platform`.
+#
+#   ansible-playbook plexus.platform.playbook                       # everything
+#   ansible-playbook plexus.platform.playbook --tags apps,secrets   # the everyday pass
+#   ansible-playbook plexus.platform.playbook --limit vm101 --tags ingress
+#
+# Tags: every play carries its layer (`host`, `platform`) and every role its
+# own name, so `--tags platform` is the whole layer and `--tags apps` one role.
+# Not a deploy: deploying is the verb's act (§ 6 PLX-Delivery); this playbook
+# binds apps to the host and hands them their environment.
+#
+# A fresh host is reached as root once (`-u root`), which creates the admins;
+# every later run connects as an admin, and the first of those closes root
+# logins. The opt-in roles run where their `<role>_enabled` is true; mail
+# runs where `mail_smtp` is set.
+- name: Host baseline of the platform hosts
+  hosts: platform
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.base, tags: [base] }
+    - { role: plexus.host.hostname, tags: [hostname], when: hostname_enabled }
+    - { role: plexus.host.netbird, tags: [netbird], when: netbird_enabled }
+    - { role: plexus.host.iam, tags: [iam] }
+    - { role: plexus.host.upgrades, tags: [upgrades] }
+    - { role: plexus.host.mail, tags: [mail] }
+    - { role: plexus.host.docker, tags: [docker] }
+    - { role: plexus.host.alloy, tags: [alloy], when: alloy_enabled } # after docker: reads its socket
+
+- name: The platform on its hosts
+  hosts: platform
+  become: true
+  tags: [platform]
+  roles:
+    - { role: plexus.platform.deploy_user, tags: [deploy_user] }
+    - { role: plexus.platform.caddy, tags: [caddy] }
+    - { role: plexus.platform.ingress, tags: [ingress] }
+    - { role: plexus.platform.secrets, tags: [secrets] } # before apps, so the first up sees the secrets
+    - { role: plexus.platform.apps, tags: [apps] }
+
+- name: Lock down the platform hosts
+  hosts: platform
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.firewall, tags: [firewall] } # after the roles that open ports in it
+    - { role: plexus.host.sshd, tags: [sshd] }         # last: closes root logins once an admin has logged in

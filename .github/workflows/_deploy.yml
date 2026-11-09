@@ -30,10 +30,6 @@ on:
         required: false
         type: string
         default: github
-      tenant:
-        description: Tenant id — first segment of the app dir (/opt/stacks/<tenant>/<app>).
-        required: true
-        type: string
       app:
         required: true
         type: string
@@ -106,7 +102,7 @@ jobs:
     # mid-flight deploy (cancelling between migrate and up would strand the
     # host).
     concurrency:
-      group: deploy-${{ inputs.tenant }}-${{ inputs.app }}-${{ inputs.environment }}
+      group: deploy-${{ inputs.app }}-${{ inputs.environment }}
       cancel-in-progress: false
     env:
       OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.op-service-account-token }}
@@ -187,7 +183,7 @@ jobs:
       # An empty option value is the same as an absent one to the verb, so
       # both flags are always passed.
       - name: Deploy
-        run: plx ${{ inputs.dry-run && '-n' || '' }} deploy '${{ inputs.host }}' '${{ inputs.tenant }}' '${{ inputs.app }}' --environment '${{ inputs.environment }}' --image '${{ inputs.image-ref }}' --health-url '${{ inputs.health-url }}'
+        run: plx ${{ inputs.dry-run && '-n' || '' }} deploy '${{ inputs.host }}' '${{ inputs.app }}' --environment '${{ inputs.environment }}' --image '${{ inputs.image-ref }}' --health-url '${{ inputs.health-url }}'
       # A GitHub-hosted runner dies with the agent; a persistent one would keep
       # it running, deploy key loaded, for every later job on the machine. The
       # same for the overlay: the peer leaves, and the management server drops

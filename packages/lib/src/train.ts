@@ -12,9 +12,9 @@ export const PRIMITIVES = 'primitives';
 /** The repos stamped with the train tag, in release order. */
 export const TRAIN_REPOS = [
   PRIMITIVES,
-  'preset-repo-web',
+  'preset-repo-turbo',
   'preset-app-nextjs',
-  'preset-repo-platform',
+  'preset-repo-operations',
   'compendium',
 ] as const;
 

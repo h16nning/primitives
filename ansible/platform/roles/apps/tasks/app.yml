@@ -1,0 +1,104 @@
+---
+# The deployment's slug (§ 3 PLX-Platform): the app name in production,
+# <name>-<environment> in any other environment.
+- name: "{{ app.name }} | resolve the deployment slug"
+  ansible.builtin.set_fact:
+    apps_slug: "{{ app.name if (app.environment | default('production')) == 'production' else app.name ~ '-' ~ app.environment }}"
+
+- name: "{{ app.name }} | resolve app dir"
+  ansible.builtin.set_fact:
+    apps_dir: "{{ plexus_deploy_root }}/{{ apps_slug }}"
+
+- name: "{{ app.name }} | create app dir"
+  ansible.builtin.file:
+    path: "{{ apps_dir }}"
+    state: directory
+    owner: "{{ plexus_deploy_user }}"
+    group: "{{ plexus_deploy_user }}"
+    mode: "0750"
+
+# The app's run shape — compose.yaml — is NOT placed here. It lives in the
+# app's source repo (an app repo, or the operations repo's own apps/<name>/ for
+# third-party software) and the deploy verb renders it at deploy time with the
+# image pinned, so the compose file on the host always names the image it
+# serves (§ 2 PLX-App). Three files in the app dir, one writer each (§ 3 PLX-Platform):
+# this role owns .env, secrets owns .env.secret (PLX-Secrets), and
+# the deploy verb owns compose.yaml.
+# Compose reads .env from the project dir implicitly, so every invocation —
+# the verb's, the rotation handler's, a human's — is a bare `docker compose`.
+
+# .env (§ 3 PLX-App, § 3 PLX-Platform), three sections: compose's own setting, the reserved
+# PLEXUS_ bindings, then the non-secret values the inventory provides for the
+# app (`app.env`). The project name is pinned to the deployment's slug, so that
+# container, network and volume names never depend on where compose was
+# invoked from. The loopback port is the one assigned
+# in the inventory, interpolated by compose as ${PLEXUS_LOOPBACK_PORT}. This
+# playbook is the file's only writer and always overwrites — the inventory is
+# the truth.
+- name: "{{ app.name }} | write .env (compose setting, platform bindings, values)"
+  ansible.builtin.copy:
+    dest: "{{ apps_dir }}/.env"
+    content: |
+      # Written by the platform playbook from the tenant inventory. Do not edit.
+      # Compose settings.
+      COMPOSE_PROJECT_NAME={{ apps_slug }}
+
+      # Platform bindings (reserved PLEXUS_ prefix, § 4 PLX-App).
+      PLEXUS_LOOPBACK_PORT={{ app.loopback_port }}
+
+      # Values from the inventory record, apps[].env (§ 3 PLX-Platform).
+      {% for key, value in (app.env | default({})).items() %}
+      {{ key }}={{ value }}
+      {% endfor %}
+    owner: "{{ plexus_deploy_user }}"
+    group: "{{ plexus_deploy_user }}"
+    mode: "0640"
+  notify: Re-create app containers
+
+- name: "{{ app.name }} | log in to GHCR as the deploy user"
+  ansible.builtin.command:
+    cmd: "docker login ghcr.io -u {{ plexus_ghcr_user }} --password-stdin"
+    stdin: "{{ plexus_ghcr_token }}"
+  become: true
+  become_user: "{{ plexus_deploy_user }}"
+  when: plexus_ghcr_token | length > 0
+  no_log: true
+  changed_when: false
+
+# Nothing to bring up until the deploy verb has placed the run shape: a fresh
+# host stays provisioned-but-empty until the first CI deploy (or a hand-run of
+# the verb), which is the operator's supervised act (§ 6 PLX-Delivery).
+- name: "{{ app.name }} | check whether the deploy verb has placed compose.yaml"
+  ansible.builtin.stat:
+    path: "{{ apps_dir }}/compose.yaml"
+  register: apps_compose
+
+# Runs as the deploy user so a private registry works: that's where the GHCR
+# login above put the credentials, and it's the same user the CI deploy verb
+# uses — playbook runs and CI deploys pull with one identity.
+- name: "{{ app.name }} | pull + start"
+  when: plexus_up | bool and apps_compose.stat.exists
+  become: true
+  become_user: "{{ plexus_deploy_user }}"
+  block:
+    - name: "{{ app.name }} | docker compose pull"
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ apps_dir }}"
+      changed_when: false
+    - name: "{{ app.name }} | docker compose up -d"
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ apps_dir }}"
+      register: apps_up
+      changed_when: "'Started' in apps_up.stderr or 'Recreated' in apps_up.stderr or 'Created' in apps_up.stderr"
+  rescue:
+    - name: "{{ app.name }} | image not pullable (registry login or a first deploy pending)"
+      ansible.builtin.debug:
+        msg: >-
+          {{ app.name }}: could not pull or start from the compose file on the host.
+          Run the CI deploy (or the deploy verb by hand) to bring it up.
+
+- name: "{{ app.name }} | remember the app dir for the rotation handler"
+  ansible.builtin.set_fact:
+    apps_dirs: "{{ (apps_dirs | default([])) + [apps_dir] }}"

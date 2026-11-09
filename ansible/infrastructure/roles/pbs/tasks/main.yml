@@ -1,0 +1,570 @@
+---
+# PBS listens on every address (port 8007) and cannot be bound to one, so the
+# host firewall has to be closed before the package arrives: a first run stops
+# here unless plexus.host.firewall has run on the host.
+- name: Check for the host firewall
+  ansible.builtin.command:
+    cmd: nft list table inet firewall
+  register: pbs_firewall
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Fail when the host firewall is not loaded
+  ansible.builtin.assert:
+    that: pbs_firewall.rc == 0
+    fail_msg: >-
+      The table inet firewall is not loaded; run plexus.host.firewall
+      on this host before pbs, so port 8007 is never reachable publicly.
+  when: not ansible_check_mode # a dry run loads no firewall
+
+# ── package ─────────────────────────────────────────────────────────────────
+- name: Install the Proxmox archive keyring
+  ansible.builtin.get_url:
+    url: https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg
+    dest: /usr/share/keyrings/proxmox-archive-keyring.gpg
+    checksum: sha256:136673be77aba35dcce385b28737689ad64fd785a797e57897589aed08db6e45
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the no-subscription repository
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/proxmox.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Types: deb
+      URIs: http://download.proxmox.com/debian/pbs
+      Suites: trixie
+      Components: pbs-no-subscription
+      Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+  register: pbs_repo
+
+# proxmox-backup-server alone keeps Debian's kernel; the proxmox-backup
+# metapackage would bring the Proxmox kernel and ZFS.
+- name: Install Proxmox Backup Server
+  ansible.builtin.apt:
+    name: proxmox-backup-server
+    state: present
+    update_cache: "{{ pbs_repo is changed }}"
+
+# The package ships the enterprise repository, which answers 401 without a
+# subscription and fails every apt update.
+- name: Remove the enterprise repository
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pbs-enterprise.sources
+    state: absent
+
+# ── datastore ───────────────────────────────────────────────────────────────
+# proxmox-backup-manager is the configuration's own front end; each resource
+# is read as JSON first, created when it is missing, and updated when what the
+# server holds differs from what the inventory says — so a changed schedule or
+# retention reaches the server on the next run, never only on a fresh install.
+# A resource created in this run is not in the read, so it is not updated too.
+- name: Read the datastores
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager datastore list --output-format json
+  register: pbs_datastores
+  changed_when: false
+  check_mode: false
+
+- name: Create the datastore
+  ansible.builtin.command:
+    cmd: >-
+      proxmox-backup-manager datastore create {{ pbs_datastore }} {{ pbs_datastore_path }}
+      --gc-schedule "{{ pbs_gc_schedule }}"
+  when: pbs_datastore not in (pbs_datastores.stdout | from_json | map(attribute='name'))
+  changed_when: true
+
+- name: Update the datastore's garbage-collection schedule when it drifted
+  vars:
+    pbs_datastore_current: >-
+      {{ pbs_datastores.stdout | from_json
+      | selectattr('name', 'equalto', pbs_datastore) | list }}
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager datastore update {{ pbs_datastore }} --gc-schedule "{{ pbs_gc_schedule }}"
+  when:
+    - pbs_datastore_current | length > 0
+    - pbs_datastore_current[0]['gc-schedule'] | default('') != pbs_gc_schedule
+  changed_when: true
+
+# A namespace is a directory in the datastore. Creating it there needs no API
+# login (the CLI's would be root@pam's, which is disabled below).
+- name: Create the namespaces
+  ansible.builtin.file:
+    path: "{{ pbs_datastore_path }}/ns/{{ item }}"
+    state: directory
+    owner: backup
+    group: backup
+    mode: "0755"
+  loop: "{{ pbs_namespaces }}"
+
+# ── retention and integrity ─────────────────────────────────────────────────
+- name: Read the prune jobs
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager prune-job list --output-format json
+  register: pbs_prune_jobs
+  changed_when: false
+  check_mode: false
+
+- name: Create the prune job
+  ansible.builtin.command:
+    cmd: >-
+      proxmox-backup-manager prune-job create {{ pbs_datastore }}
+      --store {{ pbs_datastore }} --schedule "{{ pbs_prune_schedule }}"
+      --keep-daily {{ pbs_keep_daily }}
+      --keep-weekly {{ pbs_keep_weekly }}
+      --keep-monthly {{ pbs_keep_monthly }}
+  when: pbs_datastore not in (pbs_prune_jobs.stdout | from_json | map(attribute='id'))
+  changed_when: true
+
+- name: Update the prune job when it drifted
+  vars:
+    pbs_prune_job: >-
+      {{ pbs_prune_jobs.stdout | from_json
+      | selectattr('id', 'equalto', pbs_datastore) | list }}
+  ansible.builtin.command:
+    cmd: >-
+      proxmox-backup-manager prune-job update {{ pbs_datastore }}
+      --schedule "{{ pbs_prune_schedule }}"
+      --keep-daily {{ pbs_keep_daily }}
+      --keep-weekly {{ pbs_keep_weekly }}
+      --keep-monthly {{ pbs_keep_monthly }}
+  when:
+    - pbs_prune_job | length > 0
+    - >-
+      pbs_prune_job[0].schedule | default('') != pbs_prune_schedule
+      or pbs_prune_job[0]['keep-daily'] | default(0) | int != pbs_keep_daily | int
+      or pbs_prune_job[0]['keep-weekly'] | default(0) | int != pbs_keep_weekly | int
+      or pbs_prune_job[0]['keep-monthly'] | default(0) | int != pbs_keep_monthly | int
+  changed_when: true
+
+- name: Read the verify jobs
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager verify-job list --output-format json
+  register: pbs_verify_jobs
+  changed_when: false
+  check_mode: false
+
+- name: Create the verify job
+  ansible.builtin.command:
+    cmd: >-
+      proxmox-backup-manager verify-job create {{ pbs_datastore }}
+      --store {{ pbs_datastore }} --schedule "{{ pbs_verify_schedule }}"
+      --ignore-verified true --outdated-after {{ pbs_verify_outdated_after_days }}
+  when: pbs_datastore not in (pbs_verify_jobs.stdout | from_json | map(attribute='id'))
+  changed_when: true
+
+- name: Update the verify job when it drifted
+  vars:
+    pbs_verify_job: >-
+      {{ pbs_verify_jobs.stdout | from_json
+      | selectattr('id', 'equalto', pbs_datastore) | list }}
+  ansible.builtin.command:
+    cmd: >-
+      proxmox-backup-manager verify-job update {{ pbs_datastore }}
+      --schedule "{{ pbs_verify_schedule }}"
+      --ignore-verified true --outdated-after {{ pbs_verify_outdated_after_days }}
+  when:
+    - pbs_verify_job | length > 0
+    - >-
+      pbs_verify_job[0].schedule | default('') != pbs_verify_schedule
+      or not (pbs_verify_job[0]['ignore-verified'] | default(false) | bool)
+      or pbs_verify_job[0]['outdated-after'] | default(0) | int != pbs_verify_outdated_after_days | int
+  changed_when: true
+
+# ── access ──────────────────────────────────────────────────────────────────
+- name: Read the users
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager user list --output-format json
+  register: pbs_users
+  changed_when: false
+  check_mode: false
+
+- name: Create the client users
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager user create {{ item.user }}@pbs --comment "pushes backups with the token {{ item.token }}"
+  when: (item.user ~ '@pbs') not in (pbs_users.stdout | from_json | map(attribute='userid'))
+  changed_when: true
+  loop: "{{ pbs_clients }}"
+  loop_control:
+    label: "{{ item.user }}"
+
+- name: Create the admin users
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager user create {{ item }}@pam
+  when: (item ~ '@pam') not in (pbs_users.stdout | from_json | map(attribute='userid'))
+  changed_when: true
+  loop: "{{ pbs_admins }}"
+
+- name: Read the ACLs
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager acl list --output-format json
+  register: pbs_acls
+  changed_when: false
+  check_mode: false
+
+# A token never has more than its user, so both get the role. A token that
+# does not exist yet (PBS shows its secret once, so it is generated by hand)
+# gets the role on the run after.
+- name: Read the clients' tokens
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager user list-tokens {{ item.user }}@pbs --output-format json
+  register: pbs_tokens
+  changed_when: false
+  check_mode: false
+  loop: "{{ pbs_clients }}"
+  loop_control:
+    label: "{{ item.user }}"
+
+- name: Let the clients add backups to the datastore
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager acl update /datastore/{{ pbs_datastore }} DatastoreBackup --auth-id '{{ item }}'
+  when: >-
+    pbs_acls.stdout | from_json
+    | selectattr('path', 'equalto', '/datastore/' ~ pbs_datastore)
+    | selectattr('ugid', 'equalto', item)
+    | selectattr('roleid', 'equalto', 'DatastoreBackup')
+    | list | length == 0
+  changed_when: true
+  loop: >-
+    {{ (pbs_clients | map(attribute='user') | map('regex_replace', '$', '@pbs') | list)
+       + (pbs_tokens.results | map(attribute='stdout') | map('from_json') | flatten | map(attribute='tokenid') | list) }}
+
+- name: Grant the admins the Admin role on /
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager acl update / Admin --auth-id {{ item }}@pam
+  when: >-
+    pbs_acls.stdout | from_json
+    | selectattr('path', 'equalto', '/')
+    | selectattr('ugid', 'equalto', item ~ '@pam')
+    | selectattr('roleid', 'equalto', 'Admin')
+    | list | length == 0
+  changed_when: true
+  loop: "{{ pbs_admins }}"
+
+# After the admins exist, so there is always a web UI login left. Jobs keep
+# running; break-glass is `proxmox-backup-manager user update root@pam --enable true`
+# on the console.
+- name: Disable root@pam
+  ansible.builtin.command:
+    cmd: proxmox-backup-manager user update root@pam --enable false
+  when:
+    - pbs_disable_root_pam
+    - pbs_admins | length > 0
+    - (pbs_users.stdout | from_json | selectattr('userid', 'equalto', 'root@pam') | map(attribute='enable') | first | default(true))
+  changed_when: true
+
+# ── off-site copy ───────────────────────────────────────────────────────────
+- name: Off-site copy in an S3 bucket
+  when: pbs_offsite_bucket | length > 0
+  block:
+    - name: Read the S3 endpoints
+      ansible.builtin.command:
+        cmd: proxmox-backup-manager s3 endpoint list --output-format json
+      register: pbs_s3_endpoints
+      changed_when: false
+      check_mode: false
+
+    - name: Create the S3 endpoint
+      ansible.builtin.command:
+        argv:
+          - proxmox-backup-manager
+          - s3
+          - endpoint
+          - create
+          - "{{ pbs_offsite_datastore }}"
+          - --endpoint
+          - "{{ pbs_offsite_endpoint }}"
+          - --region
+          - "{{ pbs_offsite_region }}"
+          - --access-key
+          - "{{ pbs_offsite_access_key }}"
+          - --secret-key
+          - "{{ pbs_offsite_secret_key }}"
+      when: pbs_offsite_datastore not in (pbs_s3_endpoints.stdout | from_json | map(attribute='id'))
+      changed_when: true
+      no_log: true
+
+    - name: Create the off-site datastore
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager datastore create {{ pbs_offsite_datastore }} {{ pbs_offsite_cache_path }}
+          --backend type=s3,client={{ pbs_offsite_datastore }},bucket={{ pbs_offsite_bucket }}
+          --gc-schedule "{{ pbs_offsite_gc_schedule }}"
+      when: pbs_offsite_datastore not in (pbs_datastores.stdout | from_json | map(attribute='name'))
+      changed_when: true
+
+    - name: Read the sync jobs
+      ansible.builtin.command:
+        cmd: proxmox-backup-manager sync-job list --output-format json
+      register: pbs_sync_jobs
+      changed_when: false
+      check_mode: false
+
+    # No --remote: both datastores are on this host. Snapshots pruned from the
+    # source are not removed here; the off-site datastore prunes for itself.
+    - name: Create the sync job
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager sync-job create {{ pbs_offsite_datastore }}
+          --store {{ pbs_offsite_datastore }} --remote-store {{ pbs_datastore }}
+          --schedule "{{ pbs_offsite_sync_schedule }}"
+      when: pbs_offsite_datastore not in (pbs_sync_jobs.stdout | from_json | map(attribute='id'))
+      changed_when: true
+
+    - name: Update the sync job when it drifted
+      vars:
+        pbs_sync_job: >-
+          {{ pbs_sync_jobs.stdout | from_json
+          | selectattr('id', 'equalto', pbs_offsite_datastore) | list }}
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager sync-job update {{ pbs_offsite_datastore }}
+          --remote-store {{ pbs_datastore }} --schedule "{{ pbs_offsite_sync_schedule }}"
+      when:
+        - pbs_sync_job | length > 0
+        - >-
+          pbs_sync_job[0].schedule | default('') != pbs_offsite_sync_schedule
+          or pbs_sync_job[0]['remote-store'] | default('') != pbs_datastore
+      changed_when: true
+
+    - name: Create the off-site prune job
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager prune-job create {{ pbs_offsite_datastore }}
+          --store {{ pbs_offsite_datastore }} --schedule "{{ pbs_offsite_prune_schedule }}"
+          --keep-daily {{ pbs_keep_daily }}
+          --keep-weekly {{ pbs_keep_weekly }}
+          --keep-monthly {{ pbs_keep_monthly }}
+      when: pbs_offsite_datastore not in (pbs_prune_jobs.stdout | from_json | map(attribute='id'))
+      changed_when: true
+
+    - name: Update the off-site prune job when it drifted
+      vars:
+        pbs_offsite_prune_job: >-
+          {{ pbs_prune_jobs.stdout | from_json
+          | selectattr('id', 'equalto', pbs_offsite_datastore) | list }}
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager prune-job update {{ pbs_offsite_datastore }}
+          --schedule "{{ pbs_offsite_prune_schedule }}"
+          --keep-daily {{ pbs_keep_daily }}
+          --keep-weekly {{ pbs_keep_weekly }}
+          --keep-monthly {{ pbs_keep_monthly }}
+      when:
+        - pbs_offsite_prune_job | length > 0
+        - >-
+          pbs_offsite_prune_job[0].schedule | default('') != pbs_offsite_prune_schedule
+          or pbs_offsite_prune_job[0]['keep-daily'] | default(0) | int != pbs_keep_daily | int
+          or pbs_offsite_prune_job[0]['keep-weekly'] | default(0) | int != pbs_keep_weekly | int
+          or pbs_offsite_prune_job[0]['keep-monthly'] | default(0) | int != pbs_keep_monthly | int
+      changed_when: true
+
+# ── subscription notice ─────────────────────────────────────────────────────
+- name: Suppress the subscription notice
+  ansible.builtin.include_role:
+    name: plexus.infrastructure.proxmox
+    tasks_from: subscription_notice
+  when: pbs_suppress_subscription_notice
+
+# ── notifications ───────────────────────────────────────────────────────────
+- name: Notifications to a real mailbox
+  when: pbs_alerts_smtp | length > 0
+  block:
+    - name: Read the SMTP endpoints
+      ansible.builtin.command:
+        cmd: proxmox-backup-manager notification endpoint smtp list --output-format json
+      register: pbs_smtp_endpoints
+      changed_when: false
+      check_mode: false
+
+    - name: Create the SMTP endpoint
+      ansible.builtin.command:
+        argv:
+          - proxmox-backup-manager
+          - notification
+          - endpoint
+          - smtp
+          - create
+          - smtp
+          - --server
+          - "{{ pbs_alerts_smtp.server }}"
+          - --port
+          - "{{ pbs_alerts_smtp.port }}"
+          - --mode
+          - "{{ pbs_alerts_smtp.mode }}"
+          - --username
+          - "{{ pbs_alerts_smtp.username }}"
+          - --password
+          - "{{ pbs_alerts_smtp.password }}"
+          - --from-address
+          - "{{ pbs_alerts_smtp.from_address }}"
+          - --mailto
+          - "{{ pbs_alerts_smtp.mailto }}"
+      when: "'smtp' not in (pbs_smtp_endpoints.stdout | from_json | map(attribute='name'))"
+      changed_when: true
+      no_log: true
+
+    # The password is not readable back, so it rides along whenever a visible
+    # field drifted; a rotation of the password alone is applied with
+    # `rotate: true` on the dict, for one run.
+    - name: Update the SMTP endpoint when it drifted
+      vars:
+        pbs_smtp_current: >-
+          {{ pbs_smtp_endpoints.stdout | from_json
+          | selectattr('name', 'equalto', 'smtp') | list }}
+      ansible.builtin.command:
+        argv:
+          - proxmox-backup-manager
+          - notification
+          - endpoint
+          - smtp
+          - update
+          - smtp
+          - --server
+          - "{{ pbs_alerts_smtp.server }}"
+          - --port
+          - "{{ pbs_alerts_smtp.port }}"
+          - --mode
+          - "{{ pbs_alerts_smtp.mode }}"
+          - --username
+          - "{{ pbs_alerts_smtp.username }}"
+          - --password
+          - "{{ pbs_alerts_smtp.password }}"
+          - --from-address
+          - "{{ pbs_alerts_smtp.from_address }}"
+          - --mailto
+          - "{{ pbs_alerts_smtp.mailto }}"
+      when:
+        - pbs_smtp_current | length > 0
+        - >-
+          pbs_alerts_smtp.rotate | default(false) | bool
+          or pbs_smtp_current[0].server | default('') != pbs_alerts_smtp.server
+          or pbs_smtp_current[0].port | default(0) | int != pbs_alerts_smtp.port | int
+          or pbs_smtp_current[0].mode | default('insecure') != pbs_alerts_smtp.mode
+          or pbs_smtp_current[0].username | default('') != pbs_alerts_smtp.username
+          or pbs_smtp_current[0]['from-address'] | default('') != pbs_alerts_smtp.from_address
+          or pbs_smtp_current[0].mailto | default([]) | join(',') != pbs_alerts_smtp.mailto
+      changed_when: true
+      no_log: true
+
+    - name: Read the matchers
+      ansible.builtin.command:
+        cmd: proxmox-backup-manager notification matcher list --output-format json
+      register: pbs_matchers
+      changed_when: false
+      check_mode: false
+
+    - name: Route warnings and failures to the endpoint
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager notification matcher create alerts --target smtp
+          --match-severity warning,error,unknown
+          --comment "Warnings and failures to the alerts mailbox"
+      when: "'alerts' not in (pbs_matchers.stdout | from_json | map(attribute='name'))"
+      changed_when: true
+
+    - name: Update the matcher when it drifted
+      vars:
+        pbs_matcher: >-
+          {{ pbs_matchers.stdout | from_json
+          | selectattr('name', 'equalto', 'alerts') | list }}
+      ansible.builtin.command:
+        cmd: >-
+          proxmox-backup-manager notification matcher update alerts --target smtp
+          --match-severity warning,error,unknown
+          --comment "Warnings and failures to the alerts mailbox"
+      when:
+        - pbs_matcher | length > 0
+        - >-
+          pbs_matcher[0].target | default([]) | join(',') != 'smtp'
+          or pbs_matcher[0]['match-severity'] | default([]) | join(',') != 'warning,error,unknown'
+          or pbs_matcher[0].disable | default(false) | bool
+      changed_when: true
+
+    - name: Disable the built-in matcher
+      ansible.builtin.command:
+        cmd: proxmox-backup-manager notification matcher update default-matcher --disable true
+      when: >-
+        pbs_matchers.stdout | from_json
+        | selectattr('name', 'equalto', 'default-matcher')
+        | rejectattr('disable', 'defined')
+        | list | length > 0
+      changed_when: true
+
+# ── stale-backup check ──────────────────────────────────────────────────────
+- name: Daily check for backups that stopped arriving
+  when: pbs_alerts_smtp | length > 0
+  block:
+    - name: Install the check script
+      ansible.builtin.copy:
+        src: pbs-snapshot-age
+        dest: /usr/local/sbin/pbs-snapshot-age
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Write the check's settings
+      ansible.builtin.copy:
+        dest: /etc/pbs-snapshot-age.env
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          DATASTORE_PATHS={{ ([pbs_datastore_path] + ([pbs_offsite_cache_path] if pbs_offsite_bucket else [])) | join(' ') }}
+          MAX_AGE_HOURS={{ pbs_snapshot_max_age_hours }}
+          SMTP_SERVER={{ pbs_alerts_smtp.server }}
+          SMTP_PORT={{ pbs_alerts_smtp.port }}
+          SMTP_MODE={{ pbs_alerts_smtp.mode }}
+          SMTP_USERNAME={{ pbs_alerts_smtp.username }}
+          SMTP_PASSWORD={{ pbs_alerts_smtp.password }}
+          MAIL_FROM={{ pbs_alerts_smtp.from_address }}
+          MAIL_TO={{ pbs_alerts_smtp.mailto }}
+      no_log: true
+
+    - name: Install the check's service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pbs-snapshot-age.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Alert when backups stopped arriving
+          After=proxmox-backup.service network-online.target
+
+          [Service]
+          Type=oneshot
+          EnvironmentFile=/etc/pbs-snapshot-age.env
+          ExecStart=/usr/local/sbin/pbs-snapshot-age
+      notify: Reload systemd
+
+    - name: Install the check's timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/pbs-snapshot-age.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Alert when backups stopped arriving
+
+          [Timer]
+          OnCalendar=*-*-* {{ pbs_snapshot_age_time }}:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+      notify: Reload systemd
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the check's timer
+      ansible.builtin.systemd_service:
+        name: pbs-snapshot-age.timer
+        enabled: true
+        state: started

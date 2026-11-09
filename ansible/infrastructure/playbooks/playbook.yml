@@ -1,0 +1,96 @@
+---
+# The infrastructure layer under a tenant's hosts (PLX-Infrastructure): what a
+# provider would otherwise supply. A hypervisor, a backup server for its
+# guests, and an ingress VM that shares one public address between the tenant
+# VMs. Mounted on the inventory groups `proxmox`, `pbs`, `haproxy`, and
+# `guests` for every VM on the hypervisor, the ingress VM included.
+#
+#   ansible-playbook plexus.infrastructure.playbook --limit srv01 --tags proxmox
+#   ansible-playbook plexus.infrastructure.playbook --tags guests
+#
+# Tags: every play carries its layer (`host`, `infrastructure`) and every role
+# its own name. During an outage run only the play that is needed, never the
+# whole playbook against the hypervisor.
+#
+# A fresh host is reached as root once and joins the overlay network with a
+# use-once setup key from the environment:
+#
+#   NETBIRD_SETUP_KEY=… ansible-playbook plexus.infrastructure.playbook --limit <host> -u root -e ansible_host=<public name>
+#
+# A new guest takes two runs: the first creates it from guests_list on the
+# hypervisor, the second reaches it as the first admin on the address it was
+# given and joins it to the overlay. A guest without a public address is
+# reached through the ingress VM. The guest refuses the login until its first
+# boot has created the admin, a minute or so after the first run:
+#
+#   ansible-playbook plexus.infrastructure.playbook --limit <hypervisor>
+#   NETBIRD_SETUP_KEY=… ansible-playbook plexus.infrastructure.playbook --limit <guest> -u <first admin> \
+#     -e ansible_host=<address> \
+#     -e "ansible_ssh_common_args='-oProxyJump=<ingress VM> -oStrictHostKeyChecking=accept-new'"
+#
+# The inner quotes matter: Ansible splits a key=value extra var on whitespace
+# and would drop the second option without them.
+- name: Host baseline of the infrastructure hosts
+  hosts: proxmox:pbs:haproxy
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.base, tags: [base] }
+    - { role: plexus.host.hostname, tags: [hostname], when: hostname_enabled }
+    - { role: plexus.host.netbird, tags: [netbird], when: netbird_enabled }
+    - { role: plexus.host.iam, tags: [iam] }
+    - { role: plexus.host.upgrades, tags: [upgrades] }
+    - { role: plexus.host.mail, tags: [mail] }
+
+- name: The hypervisor
+  hosts: proxmox
+  become: true
+  tags: [infrastructure]
+  roles:
+    - { role: plexus.infrastructure.proxmox, tags: [proxmox] } # web UI on the overlay, firewall, storage, guest bridge, backup jobs
+    - { role: plexus.infrastructure.guests, tags: [guests] }   # creates the VMs the other plays and playbooks configure
+
+# The firewall first: Proxmox Backup Server listens on every address, and the
+# pbs role refuses to install it on a host whose firewall is not loaded.
+- name: The backup server
+  hosts: pbs
+  become: true
+  tags: [infrastructure]
+  roles:
+    - { role: plexus.host.firewall, tags: [firewall] }
+    - { role: plexus.infrastructure.pbs, tags: [pbs] } # datastore, retention, the clients that may push to it
+
+- name: The ingress VM
+  hosts: haproxy
+  become: true
+  tags: [infrastructure]
+  roles:
+    - { role: plexus.infrastructure.haproxy, tags: [haproxy] } # SNI/Host routing to the tenant VMs, NAT for the guest bridge
+    - { role: plexus.host.firewall, tags: [firewall] }         # after the role that adds rules to it
+
+# Every VM on the hypervisor, whichever layer runs on it and whichever
+# tenant's it is: what the infrastructure layer itself needs from a guest. The
+# agent lets a backup freeze the file systems; the overlay is how the guest is
+# reached from then on.
+- name: Guests of the hypervisor
+  hosts: guests
+  become: true
+  tags: [infrastructure, guests]
+  pre_tasks:
+    # A new guest upgrades its packages on first boot and holds apt meanwhile.
+    - name: Wait for the first boot to finish
+      ansible.builtin.command:
+        cmd: cloud-init status --wait
+      changed_when: false
+      failed_when: false
+  roles:
+    - { role: plexus.host.base, tags: [base] }
+    - { role: plexus.infrastructure.guest_agent, tags: [guest_agent] }
+    - { role: plexus.host.netbird, tags: [netbird], when: netbird_enabled }
+
+- name: Lock down the infrastructure hosts
+  hosts: proxmox:pbs:haproxy
+  become: true
+  tags: [host]
+  roles:
+    - { role: plexus.host.sshd, tags: [sshd] } # last: closes root logins once an admin has logged in

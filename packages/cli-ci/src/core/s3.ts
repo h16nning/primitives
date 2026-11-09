@@ -2,7 +2,7 @@
 // PLX-Delivery): whether a bucket exists, creating it, and deleting it whole.
 // Plain S3, signed by curl (`--aws-sigv4`), so that the store is any
 // S3-compatible one and the job needs no provider's CLI; the runner host's
-// own script (ci_runner_host, ci-registry-refresh) speaks to it the same way.
+// own script (actions_runners, ci-registry-refresh) speaks to it the same way.
 // Path-style addressing, as the registry is configured. The key goes to curl
 // as a config on stdin, never on argv.
 import { createHash } from 'node:crypto';

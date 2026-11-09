@@ -7,7 +7,7 @@
 //     → poll the readiness path → on failure: restore the previous file, up -d --remove-orphans (no pull), fail
 //
 // Run from a checkout of the app's SOURCE repo (§ 2 PLX-App): an app repo's
-// CI, or the platform repo for third-party software the tenant merely
+// CI, or the operations repo for third-party software the tenant merely
 // operates. The run shape, apps/<app>/docker/compose.yaml (or
 // apps/<app>/compose.yaml), is read from there, rendered with the concrete
 // image ref in place of ${PLEXUS_DEPLOYMENT_IMAGE}, staged on the host, and
@@ -35,9 +35,9 @@
 // the same file with `web` running and healthy, with or without a ref, the
 // verb ends there: nothing is pulled, migrated or restarted.
 //
-//   plx deploy deploy@1.2.3.4 plexus website --image ghcr.io/org/website:<sha>
-//   plx deploy deploy@1.2.3.4 plexus website --environment staging --image …   # into /opt/stacks/plexus/website-staging
-//   plx -n deploy deploy@host plexus beszel          # the ssh lines it would run
+//   plx deploy deploy@1.2.3.4 website --image ghcr.io/org/website:<sha>
+//   plx deploy deploy@1.2.3.4 website --environment staging --image …   # into /opt/stacks/website-staging
+//   plx -n deploy deploy@host beszel          # the ssh lines it would run
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,7 +50,6 @@ import { UsageError } from './train.ts';
 export interface DeployOptions {
   /** ssh target, `deploy@host`. */
   host: string;
-  tenant: string;
   app: string;
   /** The image ref to pin; empty or absent for a third-party app whose file pins its own. */
   image?: string;
@@ -60,7 +59,7 @@ export interface DeployOptions {
   retries?: number;
   /** The environment deployed into; default production. Decides the app dir's slug (§ 3 PLX-Platform). */
   environment?: string;
-  /** The app dir on the host; default /opt/stacks/<tenant>/<slug>, the configure playbook's layout. */
+  /** The app dir on the host; default /opt/stacks/<slug>, the platform playbook's layout. */
   appDir?: string;
   /** The app's dir in the checkout; default apps/<app>. */
   source?: string;
@@ -108,9 +107,9 @@ export function renderCompose(text: string, image: string | undefined, path: str
   return text;
 }
 
-/** The app dir the configure playbook lays out: the deploy root, the tenant, the deployment's slug (§ 3 PLX-Platform). */
-export function defaultAppDir(tenant: string, app: string, environment: string = DEFAULT_ENVIRONMENT): string {
-  return `/opt/stacks/${tenant}/${deploymentSlug(app, environment)}`;
+/** The app dir the platform playbook lays out: the deploy root and the deployment's slug (§ 3 PLX-Platform). */
+export function defaultAppDir(app: string, environment: string = DEFAULT_ENVIRONMENT): string {
+  return `/opt/stacks/${deploymentSlug(app, environment)}`;
 }
 
 /** Single-quote a word for a remote shell. */
@@ -180,11 +179,11 @@ class Remote {
 
 /** Deploy from the checkout at `dir`: read, render, then the host-side steps in order. */
 export async function deploy(ctx: Context, options: DeployOptions): Promise<Deploy> {
-  const { host, tenant, app } = options;
+  const { host, app } = options;
   const dir = options.dir ?? '.';
   const image = options.image || undefined;
   const environment = options.environment || DEFAULT_ENVIRONMENT;
-  const appDir = options.appDir || defaultAppDir(tenant, app, environment);
+  const appDir = options.appDir || defaultAppDir(app, environment);
   const source = options.source || `apps/${app}`;
   const retries = options.retries ?? 30;
 

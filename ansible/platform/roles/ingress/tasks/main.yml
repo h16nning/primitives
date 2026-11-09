@@ -1,0 +1,69 @@
+---
+# Counterpart of caddy (PLX-Ingress): caddy installs and enables the server;
+# this role owns the routing config and runs after it in the platform
+# playbook, since the `caddy validate` step needs the binary.
+
+# Host→port→app is one inventory record per app, so per-VM port uniqueness
+# is checkable right here instead of being coordination state (PLX-Ingress).
+- name: Assert loopback ports are unique per VM
+  ansible.builtin.assert:
+    that:
+      - plexus_apps | map(attribute='loopback_port') | list | unique | length == plexus_apps | length
+    fail_msg: "Duplicate loopback port in plexus_apps — each app needs its own loopback_port."
+
+# A host is one site; the apps on it are told apart by path prefix (PLX-Ingress).
+# A prefix is a plain path — leading slash, no trailing slash, no wildcard —
+# and each host serves at most one app per prefix, and at most one at its root.
+- name: Assert app path prefixes are well-formed
+  ansible.builtin.assert:
+    that:
+      - plexus_apps | selectattr('path', 'defined') | map(attribute='path') | reject('match', '^(/[A-Za-z0-9._~-]+)+$') | list | length == 0
+    fail_msg: "apps[].path must look like /name or /a/b — leading slash, no trailing slash, no wildcard."
+
+- name: Assert each host serves one app per path prefix
+  ansible.builtin.assert:
+    that:
+      - >-
+        plexus_apps | map(attribute='host') | zip(plexus_apps | map(attribute='path', default=''))
+        | map('join') | list | unique | length == plexus_apps | length
+    fail_msg: "Two apps in plexus_apps share a host and a path prefix (or both serve the host's root)."
+
+# The routes are one file, apps.caddy, rendered from the host's app records;
+# a host runs one tenant's apps and nothing else (§ 4 PLX-Tenancy). It lands
+# before the root stub so the stub's import resolves when it is validated.
+- name: Configure the routes (reverse proxy + automatic HTTPS)
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: /etc/caddy/apps.caddy
+    mode: "0644"
+    validate: "caddy validate --config %s --adapter caddyfile"
+  notify: Reload caddy
+
+# Trains before 0.114.0 wrote the routes to tenants/<tenant>.caddy; the stub
+# no longer imports that directory, and a leftover would only confuse.
+- name: Remove the per-tenant routing directory of earlier trains
+  ansible.builtin.file:
+    path: /etc/caddy/tenants
+    state: absent
+  notify: Reload caddy
+
+- name: Load Cloudflare's ranges
+  ansible.builtin.include_vars:
+    file: cloudflare.yml
+  when: ingress_trusted_proxies == 'cloudflare'
+
+# No validate: here — ansible validates a temp copy in a temp dir, where the
+# stub's relative import glob cannot resolve. The real check is the next task.
+- name: Write the root Caddyfile (host-level options, import of the routes)
+  ansible.builtin.template:
+    src: root.Caddyfile.j2
+    dest: /etc/caddy/Caddyfile
+    mode: "0644"
+  notify: Reload caddy
+
+# Validates the combined config in place, root stub plus routes, before the
+# reload handler fires at end of play.
+- name: Validate the assembled Caddy config
+  ansible.builtin.command:
+    cmd: caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  changed_when: false

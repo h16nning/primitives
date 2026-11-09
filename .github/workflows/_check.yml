@@ -18,7 +18,7 @@ on:
       strategy:
         description: >-
           Where the jobs run (§ 8 PLX-Delivery): `github`, the forge's runners;
-          `on-prem`, the slots of the tenant's runner hosts (ci_runner_host)
+          `on-prem`, the slots of the tenant's runner hosts (actions_runners)
           for every size; `hybrid`, slots for the small and medium jobs and a
           throwaway cloud instance for each large one.
         required: false

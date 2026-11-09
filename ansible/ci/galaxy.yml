@@ -1,0 +1,17 @@
+namespace: plexus             # not "plexus-ms": collection namespaces forbid hyphens
+name: ci
+version: 0.113.0                # mirrors the release-train tag — written by plx ship.
+                              # SCM installs record this version (a moved git tag alone is a silent
+                              # no-op on reinstall); ansible-galaxy reinstalls on any DIFFERENT version.
+readme: README.md
+authors:
+  - David Julian Albers
+description: >-
+  The tenant's own CI capacity (§ 8 PLX-Delivery): actions_runners, the container slots of a
+  runner host, and the playbook plexus.ci.playbook that mounts it with the host baseline on the
+  inventory group ci.
+license:
+  - GPL-3.0-or-later
+repository: https://github.com/plexus-ms/primitives
+tags: [infrastructure, ci]
+dependencies: {}

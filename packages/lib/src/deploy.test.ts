@@ -21,7 +21,7 @@ test('renderCompose pins the placeholder once, with or without a message, and re
 });
 
 test('q quotes for a remote shell', () => {
-  assert.equal(q('/opt/stacks/t/a'), "'/opt/stacks/t/a'");
+  assert.equal(q('/opt/stacks/a'), "'/opt/stacks/a'");
   assert.equal(q("it's"), "'it'\\''s'");
 });
 
@@ -53,7 +53,7 @@ function harness(tree: Tree, host: Host, options: Options = {}) {
 }
 
 const checkout: Tree = { repo: { apps: { web: { docker: { 'compose.yaml': COMPOSE } } } } };
-const D = "'/opt/stacks/t/web'";
+const D = "'/opt/stacks/web'";
 
 /** A host serving `previous`, declaring migrate, healthy unless the live image contains "bad". */
 function host(previous: string | undefined, { migrate = true } = {}): Host & { live?: string; staged?: string } {
@@ -91,7 +91,7 @@ test('happy path: stage, pull, migrate, keep the previous file, swap, up, poll t
   const { ctx, commands, err } = harness(checkout, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:new',
     dir: '/repo',
@@ -114,7 +114,7 @@ test('happy path: stage, pull, migrate, keep the previous file, swap, up, poll t
   );
   assert.deepEqual(result, {
     host: 'deploy@h',
-    appDir: '/opt/stacks/t/web',
+    appDir: '/opt/stacks/web',
     compose: 'apps/web/docker/compose.yaml',
     image: 'ghcr.io/x/web:new',
     previous: 'ghcr.io/x/web:old',
@@ -131,7 +131,7 @@ test('no migrate service, a given health URL and a third-party file: fewer steps
   const { ctx, commands } = harness(tree, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'beszel',
     image: '',
     healthUrl: 'http://127.0.0.1:8090/',
@@ -154,7 +154,7 @@ test('an unhealthy app rolls back to the previous file and reports it', async ()
   const { ctx, commands, err } = harness(checkout, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:bad',
     dir: '/repo',
@@ -178,7 +178,7 @@ test('a first deploy that is unhealthy has nothing to roll back to', async () =>
   const { ctx, commands, err } = harness(checkout, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:bad',
     dir: '/repo',
@@ -194,9 +194,7 @@ test('a failing pull leaves the host as it was, cleans the staging dir and rethr
   const base = h.answer.bind(h);
   h.answer = (c, i) => (c.endsWith(' pull') ? undefined : base(c, i));
   const { ctx, commands } = harness(checkout, h);
-  await assert.rejects(
-    deploy(ctx, { host: 'deploy@h', tenant: 't', app: 'web', image: 'ghcr.io/x/web:new', dir: '/repo' }),
-  );
+  await assert.rejects(deploy(ctx, { host: 'deploy@h', app: 'web', image: 'ghcr.io/x/web:new', dir: '/repo' }));
   assert.ok(!commands.some((c) => c.includes('mv .incoming')));
   assert.ok(!commands.some((c) => c.endsWith('up -d --remove-orphans')));
   assert.equal(commands.at(-1), `rm -rf ${D}/.incoming`);
@@ -205,10 +203,7 @@ test('a failing pull leaves the host as it was, cleans the staging dir and rethr
 
 test('no compose file under the source is a usage error before anything reaches the host', async () => {
   const { ctx, commands } = harness({ repo: { apps: {} } }, host(undefined));
-  await assert.rejects(
-    deploy(ctx, { host: 'deploy@h', tenant: 't', app: 'web', image: 'i', dir: '/repo' }),
-    UsageError,
-  );
+  await assert.rejects(deploy(ctx, { host: 'deploy@h', app: 'web', image: 'i', dir: '/repo' }), UsageError);
   assert.deepEqual(commands, []);
 });
 
@@ -216,7 +211,7 @@ test('a dry run reaches no host and prints every ssh line of the happy path, pla
   const { ctx, commands, err } = harness(checkout, host('x'), { dryRun: true });
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:new',
     dir: '/repo',
@@ -226,7 +221,7 @@ test('a dry run reaches no host and prints every ssh line of the happy path, pla
   assert.match(lines, /previous: <read on host>/);
   assert.match(
     lines,
-    /\[dry-run\] \$ ssh -o ControlMaster=auto -o ControlPath=\S+ -o ControlPersist=60 -o StrictHostKeyChecking=accept-new deploy@h -- 'cd '\\''\/opt\/stacks\/t\/web'\\'' && docker compose up -d --remove-orphans'/,
+    /\[dry-run\] \$ ssh -o ControlMaster=auto -o ControlPath=\S+ -o ControlPersist=60 -o StrictHostKeyChecking=accept-new deploy@h -- 'cd '\\''\/opt\/stacks\/web'\\'' && docker compose up -d --remove-orphans'/,
   );
   assert.match(lines, /\(if compose.yaml declares a migrate service:\)/);
   assert.match(lines, /\$\{PLEXUS_LOOPBACK_PORT:-3000\}\$\{plexus.healthz:-\/healthz\}/);
@@ -245,7 +240,7 @@ test('the same image from the same file, healthy: nothing pulled, nothing restar
   const { ctx, commands, err } = harness(checkout, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:same',
     dir: '/repo',
@@ -258,7 +253,7 @@ test('the same image from the same file, healthy: nothing pulled, nothing restar
   assert.equal(commands.at(-1), `rm -rf ${D}/.incoming`);
   assert.deepEqual(result, {
     host: 'deploy@h',
-    appDir: '/opt/stacks/t/web',
+    appDir: '/opt/stacks/web',
     compose: 'apps/web/docker/compose.yaml',
     image: 'ghcr.io/x/web:same',
     previous: 'ghcr.io/x/web:same',
@@ -277,7 +272,7 @@ test('the same image from a changed file, or unhealthy, deploys in full', async 
   const { ctx, commands } = harness(checkout, h);
   const result = await deploy(ctx, {
     host: 'deploy@h',
-    tenant: 't',
+
     app: 'web',
     image: 'ghcr.io/x/web:same',
     dir: '/repo',
@@ -291,7 +286,7 @@ test('the same image from a changed file, or unhealthy, deploys in full', async 
 test('a third-party file the host already serves, running and healthy: nothing pulled, nothing restarted', async () => {
   const tree: Tree = { repo: { apps: { beszel: { 'compose.yaml': PINNED } } } };
   const same = harness(tree, host('ghcr.io/x/beszel:1.0'));
-  const result = await deploy(same.ctx, { host: 'deploy@h', tenant: 't', app: 'beszel', dir: '/repo' });
+  const result = await deploy(same.ctx, { host: 'deploy@h', app: 'beszel', dir: '/repo' });
   assert.equal(result.unchanged, true);
   assert.equal(result.live, 'ghcr.io/x/beszel:1.0');
   assert.ok(!same.commands.some((c) => c.endsWith(' pull')));
@@ -303,14 +298,14 @@ test('a third-party file the host already serves, running and healthy: nothing p
   const base = h.answer.bind(h);
   h.answer = (c, i) => (c.includes('cmp -s compose.yaml .incoming/compose.yaml') ? undefined : base(c, i));
   const changed = harness(tree, h);
-  const full = await deploy(changed.ctx, { host: 'deploy@h', tenant: 't', app: 'beszel', dir: '/repo' });
+  const full = await deploy(changed.ctx, { host: 'deploy@h', app: 'beszel', dir: '/repo' });
   assert.equal(full.unchanged, undefined);
   assert.ok(changed.commands.some((c) => c.endsWith(' pull')));
   assert.equal(full.live, 'ghcr.io/x/beszel:1.0');
 });
 
 test('the default app dir keys on the deployment slug: bare in production, suffixed elsewhere', () => {
-  assert.equal(defaultAppDir('plexus', 'website'), '/opt/stacks/plexus/website');
-  assert.equal(defaultAppDir('plexus', 'website', 'production'), '/opt/stacks/plexus/website');
-  assert.equal(defaultAppDir('plexus', 'website', 'staging'), '/opt/stacks/plexus/website-staging');
+  assert.equal(defaultAppDir('website'), '/opt/stacks/website');
+  assert.equal(defaultAppDir('website', 'production'), '/opt/stacks/website');
+  assert.equal(defaultAppDir('website', 'staging'), '/opt/stacks/website-staging');
 });

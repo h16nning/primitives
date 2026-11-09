@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { expectedBranch, findConsumers } from './consumers.ts';
+import { expectedBranch, findConsumers, presetOf } from './consumers.ts';
 import { Context } from './context.ts';
 import type { Directory } from './model.ts';
 import { fakeIo } from './testing/fakeIo.ts';
@@ -105,4 +105,12 @@ test('findConsumers groups sites by repo with the branch the train lands on, and
       ['acme/local', 'main', undefined, undefined, 'no origin remote', ['acme/local:preset-repo-platform']],
     ],
   );
+});
+
+test('a consumer recorded under a preset’s old name is a consumer of the current one', () => {
+  assert.equal(presetOf('gh:plexus-ms/preset-repo-web', ['preset-repo-turbo']), 'preset-repo-turbo');
+  assert.equal(presetOf('gh:plexus-ms/preset-repo-platform', ['preset-repo-operations']), 'preset-repo-operations');
+  assert.equal(presetOf('gh:plexus-ms/preset-repo-turbo', ['preset-repo-turbo']), 'preset-repo-turbo');
+  assert.equal(presetOf('gh:plexus-ms/preset-repo-web', ['preset-app-nextjs']), undefined);
+  assert.equal(presetOf('gh:acme/preset-repo-turbo', ['preset-repo-turbo']), undefined);
 });

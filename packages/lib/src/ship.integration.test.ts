@@ -174,7 +174,8 @@ function fixture(name: string): void {
   mkdirSync(FORGE());
   for (const r of TRAIN_REPOS) git(WS, 'init', '--quiet', up(r));
   const prim = up('primitives');
-  put(join(prim, 'ansible/galaxy.yml'), 'version: 0.1.0                # mirrors the release-train tag\n');
+  for (const c of ['host', 'platform', 'infrastructure', 'ci'])
+    put(join(prim, `ansible/${c}/galaxy.yml`), 'version: 0.1.0                # mirrors the release-train tag\n');
   for (const p of ['cli', 'cli-ci', 'lib', 'config'])
     put(join(prim, `packages/${p}/package.json`), `{\n  "name": "@plexus-ms/${p}",\n  "version": "0.1.0"\n}\n`);
   put(
@@ -182,7 +183,7 @@ function fixture(name: string): void {
     '{\n  "name": "primitives",\n  "devDependencies": { "@plexus-ms/config": "workspace:*" }\n}\n',
   );
   put(join(prim, '.github/workflows/pipeline.yml'), `jobs:\n  ci:\n    uses: ${PRIMITIVES_REF}ci.yml@0.1.0\n`);
-  const web = up('preset-repo-web');
+  const web = up('preset-repo-turbo');
   put(join(web, 'copier.yml'), '_answers_file: .copier-answers.yml\n');
   put(
     join(web, 'template/.github/workflows/ci.yml.jinja'),
@@ -206,11 +207,11 @@ function fixture(name: string): void {
     join(app, 'template/package.json.jinja'),
     '{\n  "devDependencies": {\n    "@plexus-ms/config": "^0.0.1"\n  }\n}\n',
   );
-  const plat = up('preset-repo-platform');
+  const plat = up('preset-repo-operations');
   put(join(plat, 'copier.yml'), '_answers_file: .copier-answers.yml\n');
   put(
     join(plat, 'template/requirements.yml'),
-    'collections:\n  - name: https://github.com/plexus-ms/primitives.git#/ansible/\n    type: git\n    version: 0.1.0\n  - name: community.docker\n    version: 9.9.9\n',
+    'collections:\n  - name: https://github.com/plexus-ms/primitives.git#/ansible/host/\n    type: git\n    version: 0.1.0\n  - name: https://github.com/plexus-ms/primitives.git#/ansible/platform/\n    type: git\n    version: 0.1.0\n  - name: community.docker\n    version: 9.9.9\n',
   );
   put(
     join(plat, 'template/mise.toml.jinja'),
@@ -259,7 +260,7 @@ function fixture(name: string): void {
   git(WS, 'init', '--quiet', tweb);
   git(tweb, 'checkout', '--quiet', '-b', 'develop');
   put(join(tweb, 'PLEXUS.md'), '---\nplexus: 0.1.0\nmodules: [PLX-Repo, PLX-JS, PLX-Delivery, PLX-Updates]\n---\n');
-  put(join(tweb, '.copier-answers.yml'), '_commit: 0.1.0\n_src_path: gh:plexus-ms/preset-repo-web\n');
+  put(join(tweb, '.copier-answers.yml'), '_commit: 0.1.0\n_src_path: gh:plexus-ms/preset-repo-turbo\n');
   put(join(tweb, 'apps/site/.copier-answers.yml'), '_commit: 0.1.0\n_src_path: gh:plexus-ms/preset-app-nextjs\n');
   put(
     join(tweb, '.github/workflows/ci.yml'),
@@ -277,7 +278,7 @@ function fixture(name: string): void {
     join(tplat, 'PLEXUS.md'),
     '---\nplexus: 0.1.0\nmodules: [PLX-Repo, PLX-Tenancy, PLX-Platform, PLX-Updates]\n---\n',
   );
-  put(join(tplat, '.copier-answers.yml'), '_commit: 0.1.0\n_src_path: gh:plexus-ms/preset-repo-platform\n');
+  put(join(tplat, '.copier-answers.yml'), '_commit: 0.1.0\n_src_path: gh:plexus-ms/preset-repo-operations\n');
   put(join(tplat, '.github/workflows/apps.yml'), `jobs:\n  apps:\n    uses: ${PRIMITIVES_REF}deploy.yml@0.1.0\n`);
   put(join(tplat, 'template-owned.txt'), 'generated\n');
   commit(tplat, 'initial');
@@ -384,11 +385,11 @@ test('dry run previews both phases and the propagation in scratch clones, and ch
   assert.equal(error, undefined, out);
   assert.ok(noneTagged('0.2.0'), 'no 0.2.0 tag anywhere');
   assert.ok(!allReleased('0.2.0') && !released('primitives', '0.2.0'), 'no release created');
-  assert.match(read(join(up('primitives'), 'ansible/galaxy.yml')), /^version: 0\.1\.0/, 'galaxy.yml untouched');
+  assert.match(read(join(up('primitives'), 'ansible/host/galaxy.yml')), /^version: 0\.1\.0/, 'galaxy.yml untouched');
   assert.match(read(join(up('compendium'), 'essentials/standard.md')), /^version: v0$/m, 'standard.md untouched');
   assert.doesNotMatch(read(join(up('compendium'), 'contracts/alpha.md')), /^changed:/m, 'modules untouched');
   assert.ok(has(out, '→ phase: primitives'), 'phase one announced');
-  assert.ok(has(out, '→ phase: preset-repo-web, preset-app-nextjs, preset-repo-platform, compendium'), 'phase two');
+  assert.ok(has(out, '→ phase: preset-repo-turbo, preset-app-nextjs, preset-repo-operations, compendium'), 'phase two');
   assert.ok(
     has(
       out,
@@ -398,7 +399,7 @@ test('dry run previews both phases and the propagation in scratch clones, and ch
   );
   assert.ok(!fakeLog().some((l) => l.startsWith('npm ')), 'registry not polled');
   assert.ok(has(out, 'primitives: packages/cli/package.json: @plexus-ms/cli → 0.2.0'), 'preview lists package bumps');
-  assert.ok(has(out, 'preset-repo-web: template/mise.toml: plx pin → 0.2.0'));
+  assert.ok(has(out, 'preset-repo-turbo: template/mise.toml: plx pin → 0.2.0'));
   assert.ok(has(out, 'preset-app-nextjs: template/package.json.jinja: @plexus-ms/config pin → 0.2.0'));
   assert.ok(has(out, 'compendium: mise.toml: plx pin → 0.2.0'));
   assert.ok(
@@ -428,7 +429,7 @@ test('dry run previews both phases and the propagation in scratch clones, and ch
     'copier ran outside the workspace (scratch clones)',
   );
   assert.ok(
-    runs.some((l) => has(l, ` ${up('preset-repo-web')} `) && has(l, '--vcs-ref main')),
+    runs.some((l) => has(l, ` ${up('preset-repo-turbo')} `) && has(l, '--vcs-ref main')),
     'copier read the local preset at main',
   );
   assert.ok(runs.some((l) => has(l, ` ${up('preset-app-nextjs')} `) && has(l, '--vcs-ref main')));
@@ -467,7 +468,7 @@ test('happy path: primitives first, the npm wait, the rest, then one pull reques
 
   // Phase one: primitives' bookkeeping, tag, release.
   const prim = up('primitives');
-  assert.match(read(join(prim, 'ansible/galaxy.yml')), /^version: 0\.2\.0 /);
+  assert.match(read(join(prim, 'ansible/host/galaxy.yml')), /^version: 0\.2\.0 /);
   for (const p of ['cli', 'cli-ci', 'lib', 'config'])
     assert.match(read(join(prim, `packages/${p}/package.json`)), /"version": "0\.2\.0"/, `${p} at the train number`);
   assert.match(read(join(prim, 'package.json')), /"workspace:\*"/, 'workspace reference left alone');
@@ -485,7 +486,7 @@ test('happy path: primitives first, the npm wait, the rest, then one pull reques
   const at = (needle: string) => log.findIndex((l) => has(l, needle));
   const primRelease = at('gh[primitives] release create 0.2.0');
   const firstPoll = at('npm view @plexus-ms/cli@0.2.0 version');
-  const presetRelease = at('gh[preset-repo-web] release create 0.2.0');
+  const presetRelease = at('gh[preset-repo-turbo] release create 0.2.0');
   assert.ok(primRelease >= 0 && primRelease < firstPoll && firstPoll < presetRelease, `order in:\n${log.join('\n')}`);
   assert.ok(
     log.filter((l) => has(l, 'npm view @plexus-ms/cli@0.2.0')).length >= 2,
@@ -516,23 +517,23 @@ test('happy path: primitives first, the npm wait, the rest, then one pull reques
   );
   assert.doesNotMatch(read(join(up('compendium'), 'approaches/gamma.md')), /^changed:/m, 'candidate never stamped');
   assert.match(read(join(up('compendium'), 'mise.toml')), /version = "0\.2\.0"/, "the compendium's plx pin");
-  const reqs = read(join(up('preset-repo-platform'), 'template/requirements.yml'));
+  const reqs = read(join(up('preset-repo-operations'), 'template/requirements.yml'));
   assert.match(reqs, /^ {4}version: 0\.2\.0$/m, 'collection pin bumped');
   assert.match(reqs, /^ {4}version: 9\.9\.9$/m, 'the other collection keeps its version');
-  assert.match(read(join(up('preset-repo-platform'), 'template/mise.toml.jinja')), /version = "0\.2\.0"/);
-  assert.match(read(join(up('preset-repo-web'), 'template/mise.toml')), /version = "0\.2\.0"/);
+  assert.match(read(join(up('preset-repo-operations'), 'template/mise.toml.jinja')), /version = "0\.2\.0"/);
+  assert.match(read(join(up('preset-repo-turbo'), 'template/mise.toml')), /version = "0\.2\.0"/);
   assert.match(
-    read(join(up('preset-repo-web'), 'template/package.json.jinja')),
+    read(join(up('preset-repo-turbo'), 'template/package.json.jinja')),
     /"@plexus-ms\/config": "0\.2\.0"/,
     'exact',
   );
   assert.match(read(join(up('preset-app-nextjs'), 'template/package.json.jinja')), /"@plexus-ms\/config": "0\.2\.0"/);
   assert.match(
-    read(join(up('preset-repo-web'), 'template/pnpm-workspace.yaml')),
+    read(join(up('preset-repo-turbo'), 'template/pnpm-workspace.yaml')),
     /"@plexus-ms\/config": 0\.2\.0$/m,
     'the catalog entry',
   );
-  assert.match(read(join(up('preset-repo-web'), 'template/.github/workflows/ci.yml.jinja')), /changes\.yml@0\.2\.0/);
+  assert.match(read(join(up('preset-repo-turbo'), 'template/.github/workflows/ci.yml.jinja')), /changes\.yml@0\.2\.0/);
 
   // Propagation: the workspace checkouts stay as they are; the origins get a train branch and a pull request.
   consumersUntouched();
@@ -654,7 +655,7 @@ test('a release created mutable stops the run after primitives, with the recover
   assert.match(error ?? '', /never delete one/);
   assert.match(error ?? '', /re-run with --train 0\.2\.0/);
   assert.ok(tagged('primitives', '0.2.0') && released('primitives', '0.2.0'));
-  assert.ok(!tagged('preset-repo-web', '0.2.0'), 'phase two not started');
+  assert.ok(!tagged('preset-repo-turbo', '0.2.0'), 'phase two not started');
 });
 
 test('a registry that never answers stops the run resumably; the re-run skips what exists', async () => {
@@ -684,7 +685,7 @@ test('disagreeing latest tags refuse a derived version and accept an explicit on
   git(up('primitives'), 'push', '--quiet', 'origin', '0.2.0');
   const first = await run({ yes: true });
   assert.match(first.error ?? '', /latest tags disagree/);
-  assert.match(first.error ?? '', /^ {2}preset-repo-web: 0\.1\.0$/m, "shows each repo's latest tag");
+  assert.match(first.error ?? '', /^ {2}preset-repo-turbo: 0\.1\.0$/m, "shows each repo's latest tag");
   assert.match(first.error ?? '', /--train 0\.2\.0/, 'names the recovery');
   assert.ok(!tagged('compendium', '0.2.0') && !tagged('compendium', '0.3.0'));
   const second = await run({ yes: true }, { train: '0.2.0' });
@@ -696,7 +697,7 @@ test('disagreeing latest tags refuse a derived version and accept an explicit on
 test('a push failure mid-release names the recovery, and the re-run finishes the train', async () => {
   fixture('midway');
   // origin keeps answering fetches but rejects every push, like a lost permission would.
-  const hook = join(remote('preset-repo-web'), 'hooks/pre-receive');
+  const hook = join(remote('preset-repo-turbo'), 'hooks/pre-receive');
   writeFileSync(hook, '#!/bin/sh\necho "rejected by the test" >&2\nexit 1\n');
   chmodSync(hook, 0o755);
   const first = await run({ yes: true });
@@ -706,13 +707,13 @@ test('a push failure mid-release names the recovery, and the re-run finishes the
     'phase one done',
   );
   assert.ok(
-    tagged('preset-repo-web', '0.2.0') &&
-      !remoteTagged('preset-repo-web', '0.2.0') &&
-      !released('preset-repo-web', '0.2.0'),
+    tagged('preset-repo-turbo', '0.2.0') &&
+      !remoteTagged('preset-repo-turbo', '0.2.0') &&
+      !released('preset-repo-turbo', '0.2.0'),
     'failing repo tagged locally only, no release',
   );
   assert.ok(
-    !tagged('preset-app-nextjs', '0.2.0') && !tagged('preset-repo-platform', '0.2.0'),
+    !tagged('preset-app-nextjs', '0.2.0') && !tagged('preset-repo-operations', '0.2.0'),
     'repos after the failure untouched',
   );
   consumersUntouched();
@@ -722,7 +723,7 @@ test('a push failure mid-release names the recovery, and the re-run finishes the
   const third = await run({ yes: true }, { train: '0.2.0' });
   assert.equal(third.error, undefined, third.out);
   assert.ok(allTagged('0.2.0') && allReleased('0.2.0'));
-  assert.ok(has(third.out, '• preset-repo-web: already tagged 0.2.0'));
+  assert.ok(has(third.out, '• preset-repo-turbo: already tagged 0.2.0'));
   assert.match(onTrain('acme-platform', '0.2.0', 'template-owned.txt'), /updated from/, 're-run: consumers updated');
 });
 
@@ -801,8 +802,8 @@ test('the confirmation aborts cleanly without a terminal', async () => {
 // ── the tenant-side pull: update ─────────────────────────────────────────────
 test('update: a repo takes the newest train itself, in a worktree, and leaves its checkout alone', async () => {
   fixture('update');
-  releaseOf('preset-repo-web', '0.1.0');
-  releaseOf('preset-repo-web', '0.2.0');
+  releaseOf('preset-repo-turbo', '0.1.0');
+  releaseOf('preset-repo-turbo', '0.2.0');
   const web = join(WS, 'acme/web');
   git(web, 'checkout', '--quiet', '-b', 'feature/x');
   put(join(web, 'notes.txt'), 'scratch\n');
@@ -855,8 +856,8 @@ test('update: a repo already at the train does nothing, and one without a releas
   fixture('update-current');
   const plat = join(WS, 'acme/platform');
   const none = await runUpdate({ yes: true }, { repo: plat });
-  assert.match(none.error ?? '', /no release of plexus-ms\/preset-repo-platform found/);
-  releaseOf('preset-repo-platform', '0.1.0');
+  assert.match(none.error ?? '', /no release of plexus-ms\/preset-repo-operations found/);
+  releaseOf('preset-repo-operations', '0.1.0');
   const { result, error, out } = await runUpdate({ yes: true }, { repo: plat });
   assert.equal(error, undefined, out);
   assert.ok(has(out, '• platform: already at 0.1.0'));
@@ -873,7 +874,7 @@ test('update: a repo already at the train does nothing, and one without a releas
 
 test('update: the dry run previews in the worktree and pushes nothing', async () => {
   fixture('update-dry');
-  releaseOf('preset-repo-web', '0.2.0');
+  releaseOf('preset-repo-turbo', '0.2.0');
   const web = join(WS, 'acme/web');
   const { result, error, out } = await runUpdate({ dryRun: true, yes: true }, { repo: web });
   assert.equal(error, undefined, out);
@@ -903,7 +904,7 @@ test("update: after ship opened the train's pull request, the tenant's own run f
 
 test('update: a conflict is committed with its markers, the pull request opened, the exit nonzero', async () => {
   fixture('update-conflict');
-  releaseOf('preset-repo-web', '0.2.0');
+  releaseOf('preset-repo-turbo', '0.2.0');
   process.env.FAKE_COPIER_CONFLICT = 'apps/site';
   const { result, error, out } = await runUpdate({ yes: true }, { repo: join(WS, 'acme/web') });
   delete process.env.FAKE_COPIER_CONFLICT;
