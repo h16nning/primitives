@@ -118,7 +118,7 @@ ci_runner_host_runner_uid: 1001
 # per tenant in 1Password (Developer tools, Infrastructure Secrets
 # Management): a Connect server with access to the CI vault, its
 # 1password-credentials.json, and an access token for that vault, both kept
-# in the CI vault's item `connect` and read from secrets.env as
+# in the CI vault's item `1password-connect` and read from secrets.env as
 # CI_CONNECT_CREDENTIALS and CI_CONNECT_TOKEN. Those names on purpose: the
 # playbook's own `op run` would take OP_CONNECT_* for itself.
 ci_runner_host_connect: false

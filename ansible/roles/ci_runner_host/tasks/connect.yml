@@ -36,7 +36,7 @@
     fail_msg: >-
       The host has no credentials for the Connect server and the run brought
       none: CI_CONNECT_CREDENTIALS (the 1password-credentials.json) and
-      CI_CONNECT_TOKEN, from the CI vault's item connect through secrets.env;
+      CI_CONNECT_TOKEN, from the CI vault's item 1password-connect through secrets.env;
       or ci_runner_host_connect false.
 
 - name: Write what Connect runs
