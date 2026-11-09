@@ -23,6 +23,8 @@
         "plexus-ms/primitives",
         "https://github.com/plexus-ms/primitives.git",
         "@plexus-ms/cli",
+        "@plexus-ms/cli-ci",
+        "@plexus-ms/lib",
         "@plexus-ms/config"
       ],
       "enabled": false
