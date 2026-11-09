@@ -124,9 +124,10 @@ ci_runner_host_runner_uid: 1001
 ci_runner_host_connect: false
 ci_runner_host_connect_credentials: "{{ lookup('env', 'CI_CONNECT_CREDENTIALS') | default('', true) }}"
 ci_runner_host_connect_token: "{{ lookup('env', 'CI_CONNECT_TOKEN') | default('', true) }}"
-# The images, pinned to their major; a tenant pins further by digest if it wants.
-ci_runner_host_connect_image_api: 1password/connect-api:1
-ci_runner_host_connect_image_sync: 1password/connect-sync:1
+# The images, pinned exactly (the registry publishes no major alias), the
+# two always at the same version.
+ci_runner_host_connect_image_api: 1password/connect-api:1.8.4
+ci_runner_host_connect_image_sync: 1password/connect-sync:1.8.4
 # The user the containers run as, which owns the credentials file.
 ci_runner_host_connect_uid: 999
 # The API's port on loopback and on the Docker bridge's gateway.
