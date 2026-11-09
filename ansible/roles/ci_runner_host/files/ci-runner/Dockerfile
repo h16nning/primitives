@@ -21,9 +21,10 @@ USER root
 # git for actions/checkout (without it the action downloads a tarball and
 # later git commands fail), jq and unzip for the jobs' own steps and the
 # 1Password action, zstd for the cache actions, gnupg for apt keys, iptables
-# for the daemon of a large slot.
+# for the daemon of a large slot, libatomic1 for node 26 and later, which
+# mise installs for plx-ci where the repo pins no node (a platform repo).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl git gnupg iptables jq unzip zstd \
+ && apt-get install -y --no-install-recommends ca-certificates curl git gnupg iptables jq libatomic1 unzip zstd \
  && rm -rf /var/lib/apt/lists/*
 # renovate: datasource=github-releases depName=docker/compose
 ARG COMPOSE_VERSION=v5.7.0
