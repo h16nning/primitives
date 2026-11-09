@@ -243,31 +243,6 @@
       WantedBy=multi-user.target
   notify: [Reload systemd, Restart the slots]
 
-# The role was ci_hybrid_host until train 0.110.0: its timer goes, so that
-# the housekeeping does not run twice. To be dropped once no host of that
-# train is left.
-- name: Check for the housekeeping timer under the role's previous name
-  ansible.builtin.stat:
-    path: /etc/systemd/system/ci-hybrid-housekeeping.timer
-  register: ci_runner_host_previous_timer
-
-- name: Stop the housekeeping timer under the role's previous name
-  when: ci_runner_host_previous_timer.stat.exists
-  ansible.builtin.systemd_service:
-    name: ci-hybrid-housekeeping.timer
-    enabled: false
-    state: stopped
-
-- name: Remove what the role installed under its previous name
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/systemd/system/ci-hybrid-housekeeping.timer
-    - /etc/systemd/system/ci-hybrid-housekeeping.service
-    - /usr/local/sbin/ci-hybrid-housekeeping
-  notify: Reload systemd
-
 - name: Install the housekeeping service
   ansible.builtin.copy:
     dest: /etc/systemd/system/ci-runner-housekeeping.service
