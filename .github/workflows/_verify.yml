@@ -377,7 +377,7 @@ jobs:
       # system libraries at the Playwright version the lockfile pins.
       - name: Install the app's dependencies and the browser
         run: |
-          corepack enable && pnpm install --frozen-lockfile --filter "./apps/${{ matrix.app }}..."
+          corepack enable && pnpm install --frozen-lockfile --filter "{./apps/${{ matrix.app }}}..."
           pnpm --filter "./apps/${{ matrix.app }}" exec playwright install --with-deps chromium
       - name: Test
         run: plx-ci test "${{ matrix.app }}" "${{ matrix.build }}" "${{ matrix.hash }}"
